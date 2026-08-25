@@ -10,7 +10,13 @@ import { prisma } from "@/lib/prisma";
 import { publish } from "@/lib/realtime";
 import { notifyMembers } from "@/lib/notify";
 import { ApiError } from "@/lib/api-guards";
-import { canApproveFor, SIGNOUT_ESCALATION_ROLES, SIGNOUT_NOTIFY_ROLES } from "@/lib/rbac";
+import {
+  canApproveFor,
+  DEPARTMENT_SCOPED_ROLES,
+  SIGNOUT_AUTO_APPROVE_ROLES,
+  SIGNOUT_ESCALATION_ROLES,
+  SIGNOUT_NOTIFY_ROLES,
+} from "@/lib/rbac";
 
 const ESCALATE_AFTER_MINUTES = 30; // no approver response → escalate to GB + HR_SE
 const AUTO_APPROVE_AFTER_MINUTES = 120; // still nothing → auto-approve, flag for review
@@ -27,6 +33,9 @@ export async function checkIn(
   if (!session || !session.isActive) throw new ApiError(404, "Session not found or inactive");
 
   const now = new Date();
+  if (now < session.startsAt || now > session.endsAt) {
+    throw new ApiError(409, "Attendance is only available while the session is in progress");
+  }
 
   // Conflict detection: already present in ANY active session?
   const conflict = await prisma.attendance.findFirst({
@@ -84,6 +93,21 @@ export async function requestSignout(member: Member, sessionId: string, notes?: 
   if (attendance.status === AttendanceStatus.LEFT) {
     throw new ApiError(409, "You have already signed out of this session");
   }
+  if (attendance.status === AttendanceStatus.LEFT_FORCED) {
+    // A forced sign-out must never be convertible into a credited one: that
+    // is the whole point of the status. Without this guard the member could
+    // press "Sign out" afterwards and be credited now − checkInAt.
+    throw new ApiError(
+      409,
+      "HR signed you out of this session because you left without signing out. This time cannot be claimed — contact an HR SE if it was a mistake.",
+    );
+  }
+  // Fail closed. Only a PRESENT record may be signed out; any status added
+  // later must be handled above rather than silently falling through to the
+  // duration-crediting path below.
+  if (attendance.status !== AttendanceStatus.PRESENT) {
+    throw new ApiError(409, "This attendance record cannot be signed out");
+  }
 
   // Validate feedback requirement for non-admin roles
   const needsFeedback = attendance.session.requiresFeedback && !["EB", "HR_EB", "GB"].includes(member.role);
@@ -93,8 +117,16 @@ export async function requestSignout(member: Member, sessionId: string, notes?: 
 
   const now = new Date();
   
-  // HR SEs, HR EBs, GBs, and members who provide feedback do not need sign-out approval.
-  const shouldAutoApprove = ([Role.HR_SE, Role.HR_EB, Role.GB] as Role[]).includes(member.role as Role) || Boolean(notes?.trim());
+  // EB, HR SEs, HR EBs and GBs never need sign-out approval.
+  //
+  // Everyone else does — EXCEPT on a session with requiresFeedback, where
+  // submitting the mandatory form is what replaces the HR review. Note that
+  // `notes` alone is NOT sufficient: on a normal session a member may leave a
+  // note and still goes into the HR approval queue.
+  const isApprover = SIGNOUT_AUTO_APPROVE_ROLES.includes(member.role as Role);
+  const submittedRequiredFeedback =
+    attendance.session.requiresFeedback && Boolean(notes?.trim());
+  const shouldAutoApprove = isApprover || submittedRequiredFeedback;
   
   if (shouldAutoApprove) {
     const duration = differenceInMinutes(now, attendance.checkInAt);
@@ -175,7 +207,8 @@ export async function reviewSignout(
   const now = new Date();
 
   if (decision === "approve") {
-    const duration = differenceInMinutes(now, request.attendance.checkInAt);
+    // Member's time is credited up until they clicked "Sign Out", not when we approve it.
+    const duration = differenceInMinutes(request.requestedAt, request.attendance.checkInAt);
     await prisma.$transaction([
       prisma.signoutRequest.update({
         where: { id: requestId },
@@ -331,8 +364,8 @@ export async function escalateStaleRequests(): Promise<{ escalated: number; auto
 
 /** Roles allowed to see a given pending request in their approvals panel. */
 export function approvalScopeWhere(approver: Member) {
-  if (approver.role === Role.EB || approver.role === Role.SE) {
+  if (DEPARTMENT_SCOPED_ROLES.includes(approver.role as Role)) {
     return { attendance: { memberId: { not: approver.id }, member: { department: approver.department } } };
   }
-  return { attendance: { memberId: { not: approver.id } } }; // HR_EB, HR_SE, GB see everything except their own
+  return { attendance: { memberId: { not: approver.id } } }; // EB, HR_EB, HR_SE, GB see everything except their own
 }
