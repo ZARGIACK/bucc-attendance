@@ -25,5 +25,8 @@ export function rateLimit(
   return { ok: true, remaining: limit - bucket.length, retryAfterSeconds: 0 };
 }
 
-/** Spec: max 10 attendance requests per member per 5 minutes. */
-export const ATTENDANCE_LIMIT = { limit: 10, windowMs: 5 * 60 * 1000 };
+/**
+ * Manual/self check-in only. QR scanning is deliberately NOT rate limited —
+ * an HR SE clearing a queue must never be throttled mid-event.
+ */
+export const ATTENDANCE_LIMIT = { limit: 100, windowMs: 5 * 60 * 1000 };

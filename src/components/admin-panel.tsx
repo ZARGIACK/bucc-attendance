@@ -232,9 +232,11 @@ function MembersTab() {
           aria-label="Search members"
           className={cn(inputCls, "flex-1")}
         />
-        <Button variant="secondary" loading={syncing} onClick={sync}>
-          <RefreshCw className="h-4 w-4" aria-hidden /> Sync central DB
-        </Button>
+        {isAdmin && (
+          <Button variant="secondary" loading={syncing} onClick={sync}>
+            <RefreshCw className="h-4 w-4" aria-hidden /> Sync central DB
+          </Button>
+        )}
       </div>
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">

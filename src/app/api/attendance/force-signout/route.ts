@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requirePermission, handleApiError, assertSameOrigin } from "@/lib/api-guards";
+import { requirePermission, handleApiError, assertSameOrigin, ApiError } from "@/lib/api-guards";
 import { prisma } from "@/lib/prisma";
+import { canApproveFor } from "@/lib/rbac";
+import { AttendanceStatus, TERMINAL_ATTENDANCE_STATUSES } from "@/lib/enums";
 
 export const dynamic = "force-dynamic";
 
@@ -27,16 +29,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Attendance record not found" }, { status: 404 });
     }
 
-    if (attendance.status === "LEFT" || attendance.status === "LEFT_FORCED") {
+    if (attendance.memberId === admin.id || !canApproveFor(admin, attendance.member)) {
+      throw new ApiError(403, "You cannot force sign out this member");
+    }
+
+    if (TERMINAL_ATTENDANCE_STATUSES.includes(attendance.status as AttendanceStatus)) {
       return NextResponse.json({ error: "User has already left" }, { status: 400 });
     }
 
-    // Force sign out
+    // Force sign out. durationMinutes is deliberately left null — a forced
+    // sign-out is not credited to the leaderboard (see the spec).
     await prisma.$transaction([
       prisma.attendance.update({
         where: { id: attendance.id },
         data: {
-          status: "LEFT_FORCED",
+          status: AttendanceStatus.LEFT_FORCED,
           checkOutApprovedAt: new Date(),
           approvedById: admin.id,
         },

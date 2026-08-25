@@ -12,8 +12,20 @@ export const AttendanceStatus = {
   PRESENT: "PRESENT",
   PENDING_SIGNOUT: "PENDING_SIGNOUT",
   LEFT: "LEFT",
+  /**
+   * Signed out by HR because the member left without signing out.
+   * `durationMinutes` is deliberately left null so the time is NOT credited
+   * to the leaderboard — see force-signout/route.ts.
+   */
+  LEFT_FORCED: "LEFT_FORCED",
 } as const;
 export type AttendanceStatus = typeof AttendanceStatus[keyof typeof AttendanceStatus];
+
+/** Statuses that mean the member is no longer in the session. */
+export const TERMINAL_ATTENDANCE_STATUSES: AttendanceStatus[] = [
+  AttendanceStatus.LEFT,
+  AttendanceStatus.LEFT_FORCED,
+];
 
 export const CheckMethod = {
   QR: "QR",

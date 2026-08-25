@@ -30,9 +30,29 @@ export type Permission =
 /** Access matrix straight from the spec. */
 const MATRIX: Record<Role, ReadonlySet<Permission>> = {
   MEMBER: new Set<Permission>(["attendance:self"]),
-  EB: new Set<Permission>(["attendance:self", "attendance:scan", "live:department", "signout:approve", "reports:export"]),
+  // EB, HR_EB and GB are peers: Directors run events, announcements and
+  // sign-out approvals club-wide. members:manage stays GB-only.
+  EB: new Set<Permission>([
+    "attendance:self",
+    "attendance:scan",
+    "live:department",
+    "live:all",
+    "signout:approve",
+    "reports:export",
+    "sessions:manage",
+    "announcements:manage",
+  ]),
   SE: new Set<Permission>(["attendance:self", "live:department", "reports:export"]),
-  HR_EB: new Set<Permission>(["attendance:self", "attendance:scan", "live:department", "live:all", "signout:approve", "reports:export", "sessions:manage"]),
+  HR_EB: new Set<Permission>([
+    "attendance:self",
+    "attendance:scan",
+    "live:department",
+    "live:all",
+    "signout:approve",
+    "reports:export",
+    "sessions:manage",
+    "announcements:manage",
+  ]),
   HR_SE: new Set<Permission>(["attendance:self", "attendance:scan", "live:department", "live:all", "signout:approve", "reports:export", "sessions:manage"]),
   GB: new Set<Permission>([
     "attendance:self",
@@ -48,8 +68,22 @@ const MATRIX: Record<Role, ReadonlySet<Permission>> = {
 };
 
 export function can(actorRole: string, permission: Permission): boolean {
-  return MATRIX[actorRole as Role].has(permission);
+  // Fail closed. `role` is a free-text DB column (and tempRole is applied on
+  // top of it), so an unmapped value must deny rather than throw.
+  return MATRIX[actorRole as Role]?.has(permission) ?? false;
 }
+
+/**
+ * Roles that mark their own attendance instead of having their QR scanned by
+ * someone else. Prefer this over inline role arrays.
+ */
+export const SELF_ATTENDANCE_ROLES: Role[] = [Role.EB, Role.HR_EB, Role.HR_SE, Role.GB];
+
+/** Roles whose own sign-out never needs another person's approval. */
+export const SIGNOUT_AUTO_APPROVE_ROLES: Role[] = [Role.EB, Role.HR_EB, Role.HR_SE, Role.GB];
+
+/** Roles whose approval authority is limited to their own department. */
+export const DEPARTMENT_SCOPED_ROLES: Role[] = [Role.SE];
 
 /** Roles notified immediately when a sign-out request is created. */
 export const SIGNOUT_NOTIFY_ROLES: Role[] = [Role.HR_EB, Role.HR_SE];
@@ -58,18 +92,18 @@ export const SIGNOUT_NOTIFY_ROLES: Role[] = [Role.HR_EB, Role.HR_SE];
 export const SIGNOUT_ESCALATION_ROLES: Role[] = [Role.GB, Role.HR_SE];
 
 /**
- * Department scoping for approvals: EB/SE may only act on their own
- * department; HR_* and GB act club-wide.
+ * Department scoping for approvals: SE may only act on their own department.
+ * EB, HR_EB, HR_SE and GB act club-wide.
  */
 export function canApproveFor(
   approver: { role: string; department: string },
   target: { department: string },
 ): boolean {
   if (!can(approver.role, "signout:approve")) return false;
-  if (approver.role === Role.EB || approver.role === Role.SE) {
+  if (DEPARTMENT_SCOPED_ROLES.includes(approver.role as Role)) {
     return approver.department === target.department;
   }
-  return true; // HR_EB, HR_SE, GB
+  return true; // EB, HR_EB, HR_SE, GB
 }
 
 /**

@@ -140,6 +140,7 @@ export function LiveBoard({ global, canExport }: { global: boolean, canExport?: 
           <option value="PRESENT">Present</option>
           <option value="PENDING_SIGNOUT">Pending Sign-Out</option>
           <option value="LEFT">Left</option>
+          <option value="LEFT_FORCED">Forced Sign-Out</option>
         </select>
         <select value={session} onChange={(e) => { setSession(e.target.value); setPage(1); }} aria-label="Filter by event" className={inputCls}>
           <option value="">All events</option>

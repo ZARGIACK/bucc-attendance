@@ -1,49 +1,68 @@
 /**
- * POST /api/attendance/scan  { token }
+ * POST /api/attendance/scan  { token, sessionId }
  *
- * One endpoint for both directions (per spec): the first valid scan of a
- * session QR checks the member in; a second scan initiates the sign-out
- * approval flow.
+ * An HR SE / EB / HR EB / GB scans a member's rotating QR to mark them
+ * present. The scanner is also checked in to the same session as a
+ * side-effect, since they are by definition at the venue.
+ *
+ * There is no location check on either party. The QR itself is the proof of
+ * presence: it rotates every 60s and is signed server-side, so it has to be
+ * read off the member's live screen. The IP + device audit trail covers the
+ * rest.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireMember, handleApiError, assertSameOrigin, ApiError } from "@/lib/api-guards";
 import { verifyQrToken } from "@/lib/qr";
-import { rateLimit, ATTENDANCE_LIMIT } from "@/lib/rate-limit";
 import { checkIn } from "@/lib/attendance-service";
+import { can } from "@/lib/rbac";
 import { getClientIp, getDeviceType } from "@/lib/utils";
 
-const bodySchema = z.object({ token: z.string().min(10).max(500), sessionId: z.string().cuid() });
+const bodySchema = z.object({
+  token: z.string().min(10).max(500),
+  sessionId: z.string().cuid(),
+});
 
 export async function POST(req: NextRequest) {
   try {
     assertSameOrigin(req);
     const scanner = await requireMember();
-    
-    // Scanners must have the attendance:scan permission.
-    if (!scanner.role || !["EB", "HR_SE", "HR_EB", "GB"].includes(scanner.role)) {
-       throw new ApiError(403, "You do not have permission to scan member QRs.");
+
+    // Single source of truth for who may scan — see rbac.ts. Previously an
+    // inline role array here, which drifted from the permission matrix.
+    if (!can(scanner.role, "attendance:scan")) {
+      throw new ApiError(403, "You do not have permission to scan member QRs.");
     }
 
+    // Scanning is unmetered on purpose: an HR SE clearing a queue of members
+    // must never be throttled mid-event.
     const { token, sessionId } = bodySchema.parse(await req.json());
-    
+
     // Verify the member's QR token
     const targetMemberId = verifyQrToken(token);
     if (!targetMemberId) throw new ApiError(400, "Invalid or expired QR code.");
-    
+
     const targetMember = await prisma.member.findUnique({ where: { id: targetMemberId } });
     if (!targetMember) throw new ApiError(404, "Member not found.");
+    if (!targetMember.isActive) throw new ApiError(403, `${targetMember.name}'s account is deactivated.`);
 
-    // The HR SE automatically gets attendance when they scan someone (or they can manually check in)
-    // Let's just ensure the HR SE is checked into the session if they aren't already.
+    // Check the scanner in too. This is a convenience side-effect, so the
+    // benign conflicts ("already here", "still in another session") must not
+    // abort the scan — but a genuine failure (DB down, session closed) must,
+    // rather than being swallowed and reported as a success.
+    let scannerNotice: string | undefined;
     try {
       await checkIn(scanner, sessionId, "MANUAL", {
         ip: getClientIp(req),
         deviceType: getDeviceType(req),
       });
-    } catch (e) {
-      // Ignore ALREADY_CHECKED_IN for the scanner
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status !== 409) throw err;
+      // Already checked in here is the normal case and needs no notice.
+      // Being checked in elsewhere silently left the scanner's own
+      // attendance unmarked, which they had no way of knowing.
+      if (err.message !== "ALREADY_CHECKED_IN") scannerNotice = err.message;
     }
 
     try {
@@ -56,13 +75,17 @@ export async function POST(req: NextRequest) {
         action: "checked_in",
         sessionName: session.name,
         message: `${targetMember.name} marked present! ✅`,
+        scannerNotice,
       });
     } catch (err) {
-      // Second scan → switch to sign-out request
+      // Second scan of the same member. Report it and change nothing: no
+      // sign-out flow, no record touched. An HR SE clearing a queue will
+      // re-scan people by accident and that must never move anyone's state.
       if (err instanceof ApiError && err.message === "ALREADY_CHECKED_IN") {
         return NextResponse.json({
           action: "already_checked_in",
-          message: `${targetMember.name} is already checked in.`,
+          message: `${targetMember.name} is already present.`,
+          scannerNotice,
         });
       }
       throw err;

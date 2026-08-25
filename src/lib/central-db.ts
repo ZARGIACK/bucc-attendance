@@ -15,10 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
 /** Map free-text department/designation from the central DB to a Role. */
-export function deriveRole(department: string, designation: string, email?: string): Role {
-  if (email?.toLowerCase() === "dibyosingho.barua.subrajit@g.bracu.ac.bd") {
-    return Role.GB;
-  }
+export function deriveRole(department: string, designation: string): Role {
   const dept = department.toLowerCase();
   const desg = designation.toLowerCase();
   const isHR = dept.includes("human resource") || dept === "hr";
@@ -32,6 +29,25 @@ export function deriveRole(department: string, designation: string, email?: stri
   if (desg.includes("director")) return isHR ? Role.HR_EB : Role.EB;
   if (desg.includes("senior executive")) return isHR ? Role.HR_SE : Role.SE;
   return Role.MEMBER;
+}
+
+/**
+ * Emails whose Role is granted by hand and must survive a central-DB refresh.
+ *
+ * `deriveRole` recomputes role from the central DB's department/designation on
+ * every login (see auth.ts) and on every sync, so a manual grant is otherwise
+ * silently overwritten — including a demotion the grantee cannot undo, because
+ * nothing in the app writes `role`. Listing an email here makes both paths
+ * leave its role alone. Comma-separated, matched case-insensitively.
+ */
+export function isRoleLocked(email: string): boolean {
+  const locked = process.env.ROLE_LOCKED_EMAILS;
+  if (!locked) return false;
+  return locked
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(email.toLowerCase());
 }
 
 export async function lookupCentralMember(email: string) {
@@ -83,7 +99,8 @@ export async function syncFromCentral(): Promise<{ pulled: number; refreshed: nu
         studentId: c.studentId,
         department: c.department,
         designation: c.designation,
-        role: deriveRole(c.department, c.designation, c.email),
+        // Role-locked accounts keep the role they were granted by hand.
+        ...(isRoleLocked(c.email) ? {} : { role: deriveRole(c.department, c.designation) }),
         isActive: c.isActive,
       },
     });

@@ -2,16 +2,18 @@ node_modules
 .next
 out
 build
-.env
-.env.local
-.env*.local
+.env*
+!.env.example
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
-.All_Department_Members_Spring26.xlsx
+tunnel.log
 # clerk configuration (can include secrets)
 /.clerk/
 
+# Roster exports and local databases contain student PII (emails, student
+# IDs, phone numbers). Never commit these. To add a fixture, whitelist it
+# explicitly, e.g. !prisma/fixtures/sample.csv
 *.csv
 *.xlsx
 *.db

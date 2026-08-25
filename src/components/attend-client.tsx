@@ -1,17 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import useSWR from "swr";
 import confetti from "canvas-confetti";
 import { format } from "date-fns";
-import { Camera, MapPin, LogOut as LogOutIcon, CalendarX, QrCode } from "lucide-react";
+import { Camera, UserCheck, LogOut as LogOutIcon, CalendarX, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/status-badge";
 import { toast } from "@/components/ui/toaster";
 import { useRealtime } from "@/hooks/use-realtime";
+import { AttendanceStatus, TERMINAL_ATTENDANCE_STATUSES } from "@/lib/enums";
 import { QRCodeSVG } from "qrcode.react";
 
 const QrScanner = dynamic(() => import("@/components/qr-scanner"), { ssr: false });
@@ -34,12 +35,18 @@ async function post(url: string, body: unknown) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? "Request failed");
-  return data as { action?: string; message: string };
+  return data as { action?: string; message: string; scannerNotice?: string };
 }
 
 function celebrate() {
   void confetti({ particleCount: 120, spread: 75, origin: { y: 0.7 } });
 }
+
+/** LEFT or LEFT_FORCED — the member is no longer in the session. */
+function isTerminalStatus(status: string): boolean {
+  return (TERMINAL_ATTENDANCE_STATUSES as string[]).includes(status);
+}
+
 
 export function AttendClient({ member }: { member: any }) {
   const { data, isLoading, mutate } = useSWR<{ sessions: SessionRow[] }>("/api/attendance/current", {
@@ -61,28 +68,54 @@ export function AttendClient({ member }: { member: any }) {
     }
   });
 
+  // UI hints only — every one of these is re-checked server-side.
   const isScanner = ["EB", "HR_SE", "HR_EB", "GB"].includes(member.role);
-  const needsQr = !["HR_SE", "HR_EB", "GB"].includes(member.role);
-  const canManageSessions = ["HR_SE", "HR_EB", "GB"].includes(member.role);
+  const needsQr = !["EB", "HR_SE", "HR_EB", "GB"].includes(member.role);
+  const canManageSessions = ["EB", "HR_SE", "HR_EB", "GB"].includes(member.role);
+
+  /**
+   * Tail of the scan-submission chain. The decode callback fires up to 10x a
+   * second, so two members' codes can be read a few hundred milliseconds apart
+   * — a queue crowding the lens, or one sweep across a group holding up
+   * phones. Both would otherwise POST concurrently, and every scan request
+   * also checks the SCANNER in; checkIn() detects an existing row by reading
+   * before it writes, so two overlapping requests can interleave past that
+   * check and leave the scanner with duplicate attendance rows.
+   *
+   * Queued rather than dropped, deliberately: a discarded decode is a member
+   * who never got marked present, and silently losing attendance is the one
+   * outcome this portal cannot have.
+   */
+  const submitQueue = useRef<Promise<void>>(Promise.resolve());
 
   const submitToken = useCallback(
-    async (token: string) => {
+    (token: string) => {
       if (!scanningSession) return;
-      setBusy("scan");
-      try {
-        const raw = token.includes("token=") ? new URL(token).searchParams.get("token") ?? token : token;
-        const result = await post("/api/attendance/scan", { token: raw, sessionId: scanningSession });
-        if (result.action === "checked_in") {
-          toast("success", result.message);
-        } else {
-          toast("info", result.message);
+      const run = async () => {
+        setBusy("scan");
+        try {
+          const raw = token.includes("token=") ? new URL(token).searchParams.get("token") ?? token : token;
+          const result = await post("/api/attendance/scan", {
+            token: raw,
+            sessionId: scanningSession,
+          });
+          if (result.action === "checked_in") {
+            toast("success", result.message);
+          } else {
+            toast("info", result.message);
+          }
+          // The member was marked, but the scanner's own attendance was not.
+          if (result.scannerNotice) toast("error", `Your own attendance was not marked: ${result.scannerNotice}`);
+          void mutate();
+        } catch (err) {
+          toast("error", err instanceof Error ? err.message : "Scan failed");
+        } finally {
+          setBusy(null);
         }
-        void mutate();
-      } catch (err) {
-        toast("error", err instanceof Error ? err.message : "Scan failed");
-      } finally {
-        setBusy(null);
-      }
+      };
+      // Same handler on both branches so one bad link can never stall the
+      // queue and strand every later scan.
+      submitQueue.current = submitQueue.current.then(run, run);
     },
     [mutate, scanningSession],
   );
@@ -90,18 +123,7 @@ export function AttendClient({ member }: { member: any }) {
   async function manualCheckIn(sessionId: string) {
     setBusy(sessionId);
     try {
-      const coords = await new Promise<GeolocationCoordinates | null>((resolve) => {
-        if (!navigator.geolocation) return resolve(null);
-        navigator.geolocation.getCurrentPosition(
-          (pos) => resolve(pos.coords),
-          () => resolve(null),
-          { enableHighAccuracy: true, timeout: 8000 },
-        );
-      });
-      const result = await post("/api/attendance/manual", {
-        sessionId,
-        ...(coords ? { lat: coords.latitude, lng: coords.longitude } : {}),
-      });
+      const result = await post("/api/attendance/manual", { sessionId });
       toast("success", result.message);
       void mutate();
     } catch (err) {
@@ -263,15 +285,20 @@ export function AttendClient({ member }: { member: any }) {
             )}
 
             <div className="mt-3 space-y-2">
-              {(!needsQr && !s.attendance) || s.attendance?.status === "LEFT" ? (
+              {/* Self-attendance roles may (re)mark themselves whenever they
+                  are not currently in the session — including after a forced
+                  sign-out, which previously left them with no way back in.
+                  Members keep needing a scan unless they signed out normally. */}
+              {(!needsQr && (!s.attendance || isTerminalStatus(s.attendance.status))) ||
+              s.attendance?.status === "LEFT" ? (
                 <Button
                   variant="secondary"
                   className="w-full"
                   loading={busy === s.id}
                   onClick={() => manualCheckIn(s.id)}
                 >
-                  <MapPin className="h-4 w-4" aria-hidden />{" "}
-                  {s.attendance?.status === "LEFT" ? "I'm Back!" : "Confirm My Attendance"}
+                  <UserCheck className="h-4 w-4" aria-hidden />{" "}
+                  {s.attendance && isTerminalStatus(s.attendance.status) ? "I'm Back!" : "Confirm My Attendance"}
                 </Button>
               ) : null}
               
@@ -327,15 +354,22 @@ export function AttendClient({ member }: { member: any }) {
                 )
               )}
               
-              {s.attendance?.status === "PENDING_SIGNOUT" && (
+              {s.attendance?.status === AttendanceStatus.PENDING_SIGNOUT && (
                 <p className="rounded-lg bg-amber-50 px-3 py-2 text-center text-sm text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                   Sign-out request submitted. Awaiting approval.
                 </p>
               )}
-              
-              {s.attendance?.status === "LEFT" && (
+
+              {s.attendance?.status === AttendanceStatus.LEFT && (
                 <p className="rounded-lg bg-slate-100 px-3 py-2 text-center text-sm text-slate-500 dark:bg-navy-800 dark:text-slate-400">
                   Signed out — thanks for volunteering! 🎉
+                </p>
+              )}
+
+              {s.attendance?.status === AttendanceStatus.LEFT_FORCED && (
+                <p className="rounded-lg bg-rose-50 px-3 py-2 text-center text-sm text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
+                  HR signed you out because you left without signing out — this time was not counted. Contact an HR SE
+                  if that was a mistake.
                 </p>
               )}
             </div>

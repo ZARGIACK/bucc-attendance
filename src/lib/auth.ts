@@ -1,10 +1,19 @@
 import { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import { lookupCentralMember, deriveRole } from "@/lib/central-db";
+import { lookupCentralMember, deriveRole, isRoleLocked } from "@/lib/central-db";
 import { prisma } from "@/lib/prisma";
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
+  // Send sign-in failures to our own landing page as `/?error=AccessDenied`
+  // instead of NextAuth's unbranded /api/auth/error. Without this, a member
+  // who is not in the central DB (or is deactivated, or used a personal
+  // Gmail) saw a bare "Access Denied" with no explanation and no way back —
+  // the ERROR_MESSAGES map on the landing page was unreachable.
+  pages: {
+    signIn: "/",
+    error: "/",
+  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || "",
@@ -15,7 +24,7 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user }) {
       if (!user.email) return false;
       const domain = process.env.ALLOWED_EMAIL_DOMAIN;
-      if (domain && !user.email.endsWith(`@${domain}`) && user.email !== "subraajit@gmail.com") {
+      if (domain && !user.email.endsWith(`@${domain}`)) {
         return false;
       }
       
@@ -32,7 +41,11 @@ export const authOptions: NextAuthOptions = {
           studentId: centralMember.studentId,
           department: centralMember.department,
           designation: centralMember.designation,
-          role: deriveRole(centralMember.department, centralMember.designation, centralMember.email),
+          // Role-locked accounts keep the role they were granted by hand.
+          // (On `create` there is no prior grant to preserve, so we derive.)
+          ...(isRoleLocked(centralMember.email)
+            ? {}
+            : { role: deriveRole(centralMember.department, centralMember.designation) }),
           isActive: centralMember.isActive,
           profilePhotoUrl: user.image || null,
         },
@@ -42,7 +55,7 @@ export const authOptions: NextAuthOptions = {
           studentId: centralMember.studentId,
           department: centralMember.department,
           designation: centralMember.designation,
-          role: deriveRole(centralMember.department, centralMember.designation, centralMember.email),
+          role: deriveRole(centralMember.department, centralMember.designation),
           isActive: centralMember.isActive,
           profilePhotoUrl: user.image || null,
         },

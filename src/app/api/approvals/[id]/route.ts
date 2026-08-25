@@ -11,12 +11,13 @@ const bodySchema = z.object({
   reason: z.string().max(500).optional(),
 });
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     assertSameOrigin(req);
     const approver = await requirePermission("signout:approve");
     const { decision, reason } = bodySchema.parse(await req.json());
-    await reviewSignout(approver, params.id, decision, reason);
+    const { id } = await params;
+    await reviewSignout(approver, id, decision, reason);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return handleApiError(err);

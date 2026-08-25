@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePermission, handleApiError } from "@/lib/api-guards";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/rbac";
+import { AttendanceStatus } from "@/lib/enums";
 
 export const dynamic = "force-dynamic";
 
 function csvEscape(v: unknown): string {
-  const s = String(v ?? "");
+  let s = String(v ?? "");
+  // Prevent spreadsheet applications from interpreting user-controlled values
+  // as formulas when an exported CSV is opened.
+  if (/^[=+\-@]/.test(s)) s = `'${s}`;
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -79,7 +83,7 @@ export async function GET(req: NextRequest) {
     for (const r of rows) {
       const checkInTime = r.checkInAt ? r.checkInAt.toLocaleTimeString('en-US', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit' }) : "";
       
-      const isForcedOut = r.status === "LEFT_FORCED";
+      const isForcedOut = r.status === AttendanceStatus.LEFT_FORCED;
       const checkOutTime = (!isForcedOut && r.checkOutApprovedAt) 
         ? r.checkOutApprovedAt.toLocaleTimeString('en-US', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit' }) 
         : "";

@@ -17,10 +17,13 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function LandingPage({
   searchParams,
 }: {
-  searchParams: { error?: string };
+  // Next 16: searchParams is a Promise. Reading it synchronously only warns
+  // in dev — in production it is silently `undefined`, which meant every
+  // rejected sign-in landed here with no message at all.
+  searchParams: Promise<{ error?: string }>;
 }) {
-  const member = await getCurrentMember();
-  const error = searchParams.error ? (ERROR_MESSAGES[searchParams.error] ?? "Sign-in failed. Please try again.") : null;
+  const [member, { error: errorCode }] = await Promise.all([getCurrentMember(), searchParams]);
+  const error = errorCode ? (ERROR_MESSAGES[errorCode] ?? "Sign-in failed. Please try again.") : null;
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-navy-900 via-navy-800 to-navy-950 px-4 text-white overflow-hidden">

@@ -1,19 +1,27 @@
 /**
  * QR token scheme.
  *
- * A QR code encodes `sessionId.windowStart.signature` where:
+ * A QR code encodes `memberId.windowStart.signature` where:
  *  - windowStart = unix seconds floored to a 60s window
- *  - signature   = HMAC-SHA256(QR_SIGNING_SECRET + session.qrSecret, sessionId.windowStart)
+ *  - signature   = HMAC-SHA256(QR_SIGNING_SECRET, `memberId.windowStart`)
  *
  * Properties:
  *  - Time-bound: a scanned token is valid for at most ~2 minutes
  *    (current window + one window of clock tolerance), and never outside
  *    the session's start/end times (checked at the API layer).
- *  - Unforgeable: signed with a server-only key + per-session secret.
- *  - Effectively single-use per member: the DB's unique
- *    (member_id, session_id) constraint blocks duplicate check-ins, and a
- *    second scan flips to the sign-out flow instead.
- *  - Revocable: regenerate qrSecret (admin panel) to kill a leaked code.
+ *  - Unforgeable: signed with a server-only key.
+ *  - Idempotent: the token identifies the MEMBER, not a session — the
+ *    session comes from the scanner's request. Re-scanning the same member
+ *    is harmless: checkIn() detects the open row and the API reports
+ *    "already present" without altering any attendance record.
+ *
+ * Not properties (do not rely on these):
+ *  - The 60s rotation is the ONLY revocation mechanism. Session.qrSecret is
+ *    generated at session creation and never read here, so regenerating it
+ *    would not invalidate any outstanding code.
+ *  - Nothing at the DB level enforces one check-in per member per session;
+ *    duplicate rows are prevented only by checkIn()'s read-then-write
+ *    conflict check, which two simultaneous scans can interleave past.
  */
 import { createHmac, timingSafeEqual } from "crypto";
 
