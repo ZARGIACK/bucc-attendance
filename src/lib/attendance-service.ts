@@ -208,7 +208,8 @@ export async function reviewSignout(
 
   if (decision === "approve") {
     // Member's time is credited up until they clicked "Sign Out", not when we approve it.
-    const duration = differenceInMinutes(request.requestedAt, request.attendance.checkInAt);
+    const effectiveOut = request.attendance.checkOutRequestedAt || request.requestedAt;
+    const duration = differenceInMinutes(effectiveOut, request.attendance.checkInAt);
     await prisma.$transaction([
       prisma.signoutRequest.update({
         where: { id: requestId },
@@ -218,7 +219,7 @@ export async function reviewSignout(
         where: { id: request.attendanceId },
         data: {
           status: AttendanceStatus.LEFT,
-          checkOutApprovedAt: now,
+          checkOutApprovedAt: effectiveOut,
           approvedById: approver.id,
           durationMinutes: duration,
         },
