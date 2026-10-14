@@ -214,9 +214,8 @@ export function BoardingPass({
     ? format(new Date(selectedSession.startsAt), "EEE, d MMMM yyyy")
     : "TBD Date";
   const meetingTime = selectedSession?.startsAt
-    ? `${format(new Date(selectedSession.startsAt), "hh:mm a")} – ${
-        selectedSession.endsAt ? format(new Date(selectedSession.endsAt), "hh:mm a") : "End"
-      }`
+    ? `${format(new Date(selectedSession.startsAt), "hh:mm a")} – ${selectedSession.endsAt ? format(new Date(selectedSession.endsAt), "hh:mm a") : "End"
+    }`
     : "TBD Time";
   const venue = selectedSession?.venue || "Club Room 3";
   const flightCode = selectedSession
@@ -289,7 +288,7 @@ export function BoardingPass({
             <form onSubmit={handleLookupMember} className="flex gap-2 w-full sm:w-auto">
               <input
                 type="text"
-                placeholder="e.g. 24301202"
+                placeholder="e.g. 24301000"
                 value={studentIdInput}
                 onChange={(e) => setStudentIdInput(e.target.value)}
                 className="h-9 px-3 rounded-xl border border-slate-300 dark:border-navy-700 bg-white dark:bg-navy-900 text-sm focus:outline-none focus:ring-2 focus:ring-electric-500 w-36 sm:w-44"
