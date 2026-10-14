@@ -13,6 +13,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   SE: "Senior Executive",
   HR_EB: "Director, Assistant Directors of HR",
   HR_SE: "HR Senior Executive",
+  CREATIVE_SE: "Creative Senior Executive",
   GB: "Governing Body",
 };
 
@@ -54,6 +55,7 @@ const MATRIX: Record<Role, ReadonlySet<Permission>> = {
     "announcements:manage",
   ]),
   HR_SE: new Set<Permission>(["attendance:self", "attendance:scan", "live:department", "live:all", "signout:approve", "reports:export", "sessions:manage"]),
+  CREATIVE_SE: new Set<Permission>(["attendance:self", "attendance:scan", "live:department", "live:all", "signout:approve"]),
   GB: new Set<Permission>([
     "attendance:self",
     "attendance:scan",
@@ -77,23 +79,23 @@ export function can(actorRole: string, permission: Permission): boolean {
  * Roles that mark their own attendance instead of having their QR scanned by
  * someone else. Prefer this over inline role arrays.
  */
-export const SELF_ATTENDANCE_ROLES: Role[] = [Role.EB, Role.HR_EB, Role.HR_SE, Role.GB];
+export const SELF_ATTENDANCE_ROLES: Role[] = [Role.EB, Role.HR_EB, Role.HR_SE, Role.CREATIVE_SE, Role.GB];
 
 /** Roles whose own sign-out never needs another person's approval. */
-export const SIGNOUT_AUTO_APPROVE_ROLES: Role[] = [Role.EB, Role.HR_EB, Role.HR_SE, Role.GB];
+export const SIGNOUT_AUTO_APPROVE_ROLES: Role[] = [Role.EB, Role.HR_EB, Role.HR_SE, Role.CREATIVE_SE, Role.GB];
 
 /** Roles whose approval authority is limited to their own department. */
 export const DEPARTMENT_SCOPED_ROLES: Role[] = [Role.SE];
 
 /** Roles notified immediately when a sign-out request is created. */
-export const SIGNOUT_NOTIFY_ROLES: Role[] = [Role.HR_EB, Role.HR_SE];
+export const SIGNOUT_NOTIFY_ROLES: Role[] = [Role.HR_EB, Role.HR_SE, Role.CREATIVE_SE];
 
 /** Roles the request escalates to after 30 minutes with no response. */
 export const SIGNOUT_ESCALATION_ROLES: Role[] = [Role.GB, Role.HR_SE];
 
 /**
  * Department scoping for approvals: SE may only act on their own department.
- * EB, HR_EB, HR_SE and GB act club-wide.
+ * EB, HR_EB, HR_SE, CREATIVE_SE, and GB act club-wide.
  */
 export function canApproveFor(
   approver: { role: string; department: string },
@@ -103,7 +105,7 @@ export function canApproveFor(
   if (DEPARTMENT_SCOPED_ROLES.includes(approver.role as Role)) {
     return approver.department === target.department;
   }
-  return true; // EB, HR_EB, HR_SE, GB
+  return true; // EB, HR_EB, HR_SE, CREATIVE_SE, GB
 }
 
 /**

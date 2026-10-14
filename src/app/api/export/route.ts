@@ -18,7 +18,39 @@ export async function GET(req: NextRequest) {
   try {
     const viewer = await requirePermission("reports:export");
     const p = req.nextUrl.searchParams;
+    const type = p.get("type");
     const sessionId = p.get("sessionId") ?? undefined;
+
+    if (type === "pre-event") {
+      const rsvps = await prisma.preEventRsvp.findMany({
+        where: sessionId ? { sessionId } : {},
+        include: { session: { select: { name: true, startsAt: true } } },
+        orderBy: [{ dept: "asc" }, { name: "asc" }],
+      });
+      const lines = [
+        ["Name", "Student ID", "Department", "Designation", "Status", "Meeting Session", "RSVP Date"].join(","),
+        ...rsvps.map((r) =>
+          [
+            r.name,
+            r.studentId,
+            r.dept,
+            r.designation,
+            r.status,
+            r.session?.name ?? "Scheduled Meeting",
+            r.updatedAt.toISOString().slice(0, 19).replace("T", " "),
+          ]
+            .map(csvEscape)
+            .join(",")
+        ),
+      ];
+      return new NextResponse(lines.join("\n"), {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="pre-event-rsvps-${new Date().toISOString().slice(0, 10)}.csv"`,
+        },
+      });
+    }
+
     const from = p.get("from") ? new Date(`${p.get("from")}T00:00:00`) : undefined;
     const to = p.get("to") ? new Date(`${p.get("to")}T23:59:59`) : undefined;
 

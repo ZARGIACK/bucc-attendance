@@ -7,14 +7,16 @@ import { useSession, signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
 import { LogOut, Moon, Sun, QrCode, HelpCircle, LayoutDashboard } from "lucide-react";
 import { useState } from "react";
+import useSWR from "swr";
 import { NotificationBell } from "@/components/notification-bell";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", roles: ["MEMBER", "EB", "SE", "HR_EB", "HR_SE", "GB"] },
-  { href: "/dashboard/live", label: "Live Board", roles: ["EB", "SE", "HR_EB", "HR_SE", "GB"] },
-  { href: "/dashboard/approvals", label: "Approvals", roles: ["EB", "HR_EB", "HR_SE", "GB"] },
-  { href: "/dashboard/analytics", label: "Analytics", roles: ["EB", "SE", "HR_EB", "HR_SE", "GB"] },
+  { href: "/dashboard", label: "Dashboard", roles: ["MEMBER", "EB", "SE", "HR_EB", "HR_SE", "GB", "CREATIVE_SE"] },
+  { href: "/pre-event", label: "Pre-Event Pass", roles: ["MEMBER", "EB", "SE", "HR_EB", "HR_SE", "GB", "CREATIVE_SE"] },
+  { href: "/dashboard/live", label: "Live Board", roles: ["EB", "SE", "HR_EB", "HR_SE", "GB", "CREATIVE_SE"] },
+  { href: "/dashboard/approvals", label: "Approvals", roles: ["EB", "HR_EB", "HR_SE", "GB", "CREATIVE_SE"] },
+  { href: "/dashboard/analytics", label: "Analytics", roles: ["EB", "SE", "HR_EB", "HR_SE", "GB", "CREATIVE_SE"] },
   { href: "/dashboard/admin", label: "Admin", roles: ["EB", "HR_EB", "HR_SE", "GB"] },
 ];
 
@@ -23,8 +25,19 @@ export function Navbar() {
   const pathname = usePathname();
   const { resolvedTheme, setTheme } = useTheme();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const { data: preEventStatus } = useSWR<{ hasActivePreEvent: boolean }>("/api/pre-event/status", {
+    revalidateOnFocus: true,
+    refreshInterval: 10000,
+  });
+
   const role = session?.user?.role ?? "MEMBER";
-  const links = NAV.filter((n) => n.roles.includes(role));
+  const links = NAV.filter((n) => {
+    // Only turn on Pre-Event Pass button if an admin/hrse/eb/gb added a pre-event from sessions
+    if (n.href === "/pre-event") {
+      return Boolean(preEventStatus?.hasActivePreEvent) && n.roles.includes(role);
+    }
+    return n.roles.includes(role);
+  });
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur dark:border-navy-800 dark:bg-navy-950/80">

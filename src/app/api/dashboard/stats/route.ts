@@ -17,8 +17,11 @@ export async function GET(req: NextRequest) {
     const viewer = await requirePermission("live:department");
     const seesAll = can(viewer.role, "live:all");
     const department = seesAll ? undefined : viewer.department;
-    const days = Math.min(180, Number(req.nextUrl.searchParams.get("days")) || 30);
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const daysParam = req.nextUrl.searchParams.get("days");
+    const isLifetime = daysParam === "all";
+    const days = isLifetime ? "all" : Math.min(180, Number(daysParam) || 30);
+    const since = isLifetime ? new Date(0) : new Date(Date.now() - (days as number) * 24 * 60 * 60 * 1000);
 
     // Parameterized fragment — safe composition, no string concatenation.
     const deptSql = department ? Prisma.sql`AND m.department = ${department}` : Prisma.empty;

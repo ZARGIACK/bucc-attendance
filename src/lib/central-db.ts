@@ -14,11 +14,12 @@ import { Role } from "@/lib/enums";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
-/** Map free-text department/designation from the central DB to a Role. */
 export function deriveRole(department: string, designation: string): Role {
   const dept = department.toLowerCase();
   const desg = designation.toLowerCase();
   const isHR = dept.includes("human resource") || dept === "hr";
+  const isCreative = dept.includes("creative");
+  
   if (
     dept.includes("governing") ||
     desg === "gb" ||
@@ -27,7 +28,11 @@ export function deriveRole(department: string, designation: string): Role {
     return Role.GB;
   }
   if (desg.includes("director")) return isHR ? Role.HR_EB : Role.EB;
-  if (desg.includes("senior executive")) return isHR ? Role.HR_SE : Role.SE;
+  if (desg.includes("senior executive")) {
+    if (isHR) return Role.HR_SE;
+    if (isCreative) return Role.CREATIVE_SE;
+    return Role.SE;
+  }
   return Role.MEMBER;
 }
 

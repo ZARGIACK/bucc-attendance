@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { formatDuration, cn } from "@/lib/utils";
 
 type Stats = {
-  days: number;
+  days: number | "all";
   sessionCount: number;
   byDepartment: { department: string; count: number }[];
   arrivalHeatmap: { dow: number; hour: number; count: number }[];
@@ -22,7 +22,7 @@ const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 7:00 → 21:00
 
 export function AnalyticsView() {
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState<number | "all">(30);
   const { data, isLoading } = useSWR<Stats>(`/api/dashboard/stats?days=${days}`);
 
   if (isLoading && !data) {
@@ -35,17 +35,17 @@ export function AnalyticsView() {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-2">
-        {[7, 30, 90].map((d) => (
+      <div className="flex flex-wrap gap-2">
+        {[7, 30, 90, "all"].map((d) => (
           <button
             key={d}
-            onClick={() => setDays(d)}
+            onClick={() => setDays(d as number | "all")}
             className={cn(
               "rounded-lg px-3 py-1.5 text-sm font-medium",
               days === d ? "bg-navy-800 text-white dark:bg-electric-600" : "bg-slate-100 text-slate-600 dark:bg-navy-800 dark:text-slate-300",
             )}
           >
-            {d} days
+            {d === "all" ? "Lifetime" : `${d} days`}
           </button>
         ))}
       </div>

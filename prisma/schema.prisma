@@ -70,17 +70,40 @@ model Session {
   /// Per-session HMAC key component; rotating QR tokens are derived from it.
   qrSecret    String    @map("qr_secret")
   isActive    Boolean   @default(true) @map("is_active")
+  isPreEvent  Boolean   @default(false) @map("is_pre_event")
   requiresFeedback Boolean @default(false) @map("requires_feedback")
   /// iCal-style hint for recurring sessions: NONE | WEEKLY | MONTHLY
   recurrence  String    @default("NONE")
   createdById String    @map("created_by")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  createdBy  Member       @relation("SessionCreator", fields: [createdById], references: [id])
-  attendance Attendance[]
+  createdBy     Member         @relation("SessionCreator", fields: [createdById], references: [id])
+  attendance    Attendance[]
+  preEventRsvps PreEventRsvp[]
 
   @@index([isActive, startsAt])
+  @@index([isPreEvent, endsAt])
   @@map("sessions")
+}
+
+/// Pre-event RSVP / Boarding Pass tracking for scheduled meetings
+model PreEventRsvp {
+  id          String   @id @default(cuid())
+  name        String
+  dept        String
+  studentId   String   @map("student_id")
+  designation String
+  status      String   // "Confirmed" | "Cancelled"
+  sessionId   String   @map("session_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+  @@index([sessionId, status])
+  @@index([studentId])
+  @@map("pre_event_rsvps")
 }
 
 /// One attendance record per member per session (enforced by @@unique).

@@ -3,15 +3,17 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { format, differenceInHours } from "date-fns";
-import { CalendarPlus, QrCode, RefreshCw, Megaphone, Users } from "lucide-react";
+import { CalendarPlus, QrCode, RefreshCw, Megaphone, Users, Ticket, ExternalLink } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { UpcomingSessionTracker } from "@/components/upcoming-session-tracker";
 
 const TABS = [
   { id: "sessions", label: "Sessions & QR", icon: QrCode },
+  { id: "upcoming-tracker", label: "Upcoming Session Tracker", icon: Ticket },
   { id: "members", label: "Members", icon: Users },
   { id: "announcements", label: "Announcements", icon: Megaphone },
 ] as const;
@@ -32,6 +34,7 @@ async function json(url: string, method: string, body?: unknown) {
 
 export function AdminPanel() {
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("sessions");
+
   return (
     <div>
       <div className="mb-4 flex gap-2 overflow-x-auto" role="tablist">
@@ -51,6 +54,7 @@ export function AdminPanel() {
         ))}
       </div>
       {tab === "sessions" && <SessionsTab />}
+      {tab === "upcoming-tracker" && <UpcomingSessionTracker />}
       {tab === "members" && <MembersTab />}
       {tab === "announcements" && <AnnouncementsTab />}
     </div>
@@ -61,35 +65,80 @@ export function AdminPanel() {
 
 type SessionRow = {
   id: string; name: string; venue: string | null; startsAt: string; endsAt: string;
-  isActive: boolean; recurrence: string; _count: { attendance: number };
+  isActive: boolean; isPreEvent: boolean; recurrence: string; _count: { attendance: number };
 };
 
 function SessionsTab() {
   const { data, mutate } = useSWR<{ sessions: SessionRow[] }>("/api/sessions");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", venue: "", startsAt: "", endsAt: "", recurrence: "NONE", requiresFeedback: false });
+  const [form, setForm] = useState({
+    name: "",
+    venue: "",
+    startsAt: "",
+    endsAt: "",
+    recurrence: "NONE",
+    requiresFeedback: false,
+    isPreEvent: false,
+  });
   const [saving, setSaving] = useState(false);
 
   async function createSession(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     try {
+      const starts = new Date(form.startsAt);
+      const ends = new Date(form.endsAt);
+
+      if (form.isPreEvent && ends <= new Date()) {
+        toast("error", "Old/past sessions cannot be a pre-event. Only upcoming sessions can have a pre-event pass.");
+        setSaving(false);
+        return;
+      }
+
       await json("/api/sessions", "POST", {
         name: form.name,
         venue: form.venue || undefined,
-        startsAt: new Date(form.startsAt).toISOString(),
-        endsAt: new Date(form.endsAt).toISOString(),
+        startsAt: starts.toISOString(),
+        endsAt: ends.toISOString(),
         recurrence: form.recurrence,
         requiresFeedback: form.requiresFeedback,
+        isPreEvent: form.isPreEvent,
       });
       toast("success", "Session created");
       setShowForm(false);
-      setForm({ name: "", venue: "", startsAt: "", endsAt: "", recurrence: "NONE", requiresFeedback: false });
+      setForm({
+        name: "",
+        venue: "",
+        startsAt: "",
+        endsAt: "",
+        recurrence: "NONE",
+        requiresFeedback: false,
+        isPreEvent: false,
+      });
       void mutate();
     } catch (err) {
       toast("error", err instanceof Error ? err.message : "Failed");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function togglePreEvent(id: string, current: boolean, name: string, startsAt: string) {
+    if (!current && new Date(startsAt) <= new Date()) {
+      toast("error", "Cannot enable Pre-Event for a session that has already started or passed.");
+      return;
+    }
+    try {
+      await json("/api/sessions", "PATCH", { id, isPreEvent: !current });
+      toast(
+        "success",
+        !current
+          ? `Pre-Event Pass turned ON for "${name}"`
+          : `Pre-Event Pass turned OFF for "${name}"`
+      );
+      void mutate();
+    } catch (err: any) {
+      toast("error", err.message || "Failed to update session");
     }
   }
 
@@ -106,9 +155,11 @@ function SessionsTab() {
 
   return (
     <div className="space-y-4">
-      <Button onClick={() => setShowForm((s) => !s)}>
-        <CalendarPlus className="h-4 w-4" aria-hidden /> New session
-      </Button>
+      <div className="flex items-center justify-between">
+        <Button onClick={() => setShowForm((s) => !s)}>
+          <CalendarPlus className="h-4 w-4" aria-hidden /> New session
+        </Button>
+      </div>
 
       {showForm && (
         <form onSubmit={createSession} className="card grid gap-3 p-4 sm:grid-cols-2">
@@ -136,32 +187,74 @@ function SessionsTab() {
             Ends
             <input required type="datetime-local" className={inputCls} value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} />
           </label>
-          <label className="text-sm flex items-center gap-2 sm:col-span-2 mt-2">
-            <input type="checkbox" checked={form.requiresFeedback} onChange={(e) => setForm({ ...form, requiresFeedback: e.target.checked })} />
-            Need Feedback/Queries?
-          </label>
-          <Button type="submit" loading={saving} className="sm:col-span-2">Create session</Button>
+          <div className="sm:col-span-2 flex flex-col gap-2 mt-1">
+            <label className="text-sm flex items-center gap-2">
+              <input type="checkbox" checked={form.requiresFeedback} onChange={(e) => setForm({ ...form, requiresFeedback: e.target.checked })} />
+              Need Feedback/Queries?
+            </label>
+            <label className="text-sm flex items-center gap-2">
+              <input type="checkbox" checked={form.isPreEvent} onChange={(e) => setForm({ ...form, isPreEvent: e.target.checked })} />
+              Enable Pre-Event Pass for this session (Boarding Pass & RSVP Tracker)
+            </label>
+          </div>
+          <Button type="submit" loading={saving} className="sm:col-span-2 mt-2">Create session</Button>
         </form>
       )}
 
       <div className="card divide-y divide-slate-100 dark:divide-navy-800/60">
-        {(data?.sessions ?? []).map((s) => (
-          <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-            <div>
-              <p className="font-medium">
-                {s.name} {s.recurrence !== "NONE" && <Badge tone="blue">{s.recurrence.toLowerCase()}</Badge>}
-              </p>
-              <p className="text-sm text-slate-500">
-                {format(new Date(s.startsAt), "d MMM, h:mm a")} – {format(new Date(s.endsAt), "h:mm a")}
-                {s.venue ? ` · ${s.venue}` : ""} · {s._count.attendance} attendee{s._count.attendance === 1 ? "" : "s"}
-              </p>
+        {(data?.sessions ?? []).map((s) => {
+          const now = new Date();
+          const isPreEventEligible = new Date(s.startsAt) > now;
+          const isLiveMeeting = new Date(s.startsAt) <= now && new Date(s.endsAt) > now;
+          return (
+            <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+              <div>
+                <p className="font-medium flex items-center gap-2">
+                  {s.name}
+                  {s.recurrence !== "NONE" && <Badge tone="blue">{s.recurrence.toLowerCase()}</Badge>}
+                  {isLiveMeeting && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-xs font-bold animate-pulse">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      Live Now
+                    </span>
+                  )}
+                  {s.isPreEvent && isPreEventEligible && (
+                    <Badge tone="green">Pre-Event Pass Active</Badge>
+                  )}
+                </p>
+                <p className="text-sm text-slate-500">
+                  {format(new Date(s.startsAt), "d MMM, h:mm a")} – {format(new Date(s.endsAt), "h:mm a")}
+                  {s.venue ? ` · ${s.venue}` : ""} · {s._count.attendance} attendee{s._count.attendance === 1 ? "" : "s"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 sm:gap-3">
+                {/* Pre-event pass is ONLY for future meetings before they start */}
+                {isPreEventEligible && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => togglePreEvent(s.id, s.isPreEvent, s.name, s.startsAt)}
+                    className={cn(
+                      "text-xs gap-1",
+                      s.isPreEvent
+                        ? "border-emerald-500/40 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
+                        : "text-slate-600 dark:text-slate-300"
+                    )}
+                  >
+                    <Ticket className="h-3.5 w-3.5 text-electric-500" />
+                    {s.isPreEvent ? "Pre-Event Pass: ON" : "+ Add Pre-Event"}
+                  </Button>
+                )}
+                <a href={`/api/export?sessionId=${s.id}`} className="text-sm font-medium text-electric-600 hover:underline">
+                  Export CSV
+                </a>
+                <Button variant="danger" size="sm" onClick={() => deleteSession(s.id, s.name)}>
+                  Delete
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <a href={`/api/export?sessionId=${s.id}`} className="text-sm font-medium text-electric-600 hover:underline">Export CSV</a>
-              <Button variant="danger" size="sm" onClick={() => deleteSession(s.id, s.name)}>Delete</Button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

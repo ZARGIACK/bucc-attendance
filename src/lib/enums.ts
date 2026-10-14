@@ -4,6 +4,7 @@ export const Role = {
   SE: "SE",
   HR_EB: "HR_EB",
   HR_SE: "HR_SE",
+  CREATIVE_SE: "CREATIVE_SE",
   GB: "GB",
 } as const;
 export type Role = typeof Role[keyof typeof Role];

@@ -19,6 +19,7 @@ export async function GET() {
       select: {
         id: true, name: true, description: true, venue: true,
         startsAt: true, endsAt: true, isActive: true, recurrence: true,
+        isPreEvent: true,
         _count: { select: { attendance: true } },
       },
     });
@@ -36,6 +37,7 @@ const createSchema = z.object({
   endsAt: z.string().datetime(),
   recurrence: z.enum(["NONE", "WEEKLY", "MONTHLY"]).default("NONE"),
   requiresFeedback: z.boolean().default(false),
+  isPreEvent: z.boolean().default(false),
 });
 
 export async function POST(req: NextRequest) {
@@ -46,6 +48,9 @@ export async function POST(req: NextRequest) {
     if (new Date(body.endsAt) <= new Date(body.startsAt)) {
       throw new ApiError(400, "Session must end after it starts");
     }
+    if (body.isPreEvent && new Date(body.endsAt) <= new Date()) {
+      throw new ApiError(400, "Old/past sessions cannot be configured as a pre-event. Only upcoming sessions can have a pre-event pass.");
+    }
     const session = await prisma.session.create({
       data: {
         name: body.name,
@@ -53,6 +58,7 @@ export async function POST(req: NextRequest) {
         venue: body.venue,
         recurrence: body.recurrence,
         requiresFeedback: body.requiresFeedback,
+        isPreEvent: body.isPreEvent,
         startsAt: new Date(body.startsAt),
         endsAt: new Date(body.endsAt),
         qrSecret: randomBytes(24).toString("hex"),
@@ -63,6 +69,52 @@ export async function POST(req: NextRequest) {
       data: { actorId: gb.id, action: "SESSION_CREATED", targetType: "session", targetId: session.id },
     });
     return NextResponse.json({ session }, { status: 201 });
+  } catch (err) {
+    return handleApiError(err);
+  }
+}
+
+const patchSchema = z.object({
+  id: z.string().min(1),
+  isPreEvent: z.boolean(),
+});
+
+export async function PATCH(req: NextRequest) {
+  try {
+    assertSameOrigin(req);
+    const manager = await requirePermission("sessions:manage");
+    const body = patchSchema.parse(await req.json());
+
+    const session = await prisma.session.findUnique({
+      where: { id: body.id },
+    });
+    if (!session) {
+      throw new ApiError(404, "Session not found");
+    }
+
+    // "old sessions cannot be pre-event, come on!"
+    if (body.isPreEvent && new Date(session.endsAt) <= new Date()) {
+      throw new ApiError(
+        400,
+        "Old/past sessions cannot be a pre-event. Only upcoming sessions can have a pre-event pass."
+      );
+    }
+
+    const updated = await prisma.session.update({
+      where: { id: body.id },
+      data: { isPreEvent: body.isPreEvent },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: manager.id,
+        action: body.isPreEvent ? "PRE_EVENT_ENABLED" : "PRE_EVENT_DISABLED",
+        targetType: "session",
+        targetId: body.id,
+      },
+    });
+
+    return NextResponse.json({ ok: true, session: updated });
   } catch (err) {
     return handleApiError(err);
   }
