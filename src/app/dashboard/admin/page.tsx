@@ -8,7 +8,7 @@ export default async function AdminPage() {
       <div className="mb-6">
         <h1 className="text-xl font-bold">Admin Panel</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Governing Body tools: sessions & QR codes, member management, announcements.
+          Governing Body & HR Executive Body tools: sessions & QR codes, member management, announcements.
         </p>
       </div>
       <AdminPanel />

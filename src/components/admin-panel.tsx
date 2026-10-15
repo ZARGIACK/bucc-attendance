@@ -270,7 +270,7 @@ type MemberRow = {
 
 function MembersTab() {
   const { data: session } = useSession();
-  const isAdmin = session?.user?.role === "GB";
+  const isAdmin = ["GB", "HR_EB"].includes(session?.user?.role || "");
   const isHR = ["GB", "HR_EB", "HR_SE"].includes(session?.user?.role || "");
 
   const [q, setQ] = useState("");
@@ -363,7 +363,7 @@ function MembersTab() {
                         {m.isActive ? "Deactivate" : "Activate"}
                       </Button>
                     )}
-                    {isHR && m.department.toLowerCase() === "human resources" && m.role === "MEMBER" && (
+                    {isHR && (isAdmin || m.department.toLowerCase() === "human resources") && m.role === "MEMBER" && (
                       m.tempRole && m.tempRoleExpiresAt && new Date(m.tempRoleExpiresAt) > new Date() ? (
                         <Button variant="danger" size="sm" onClick={() => toggleTempPower(m, false)}>
                           Revoke Temp Power ({differenceInHours(new Date(m.tempRoleExpiresAt), new Date())}h left)

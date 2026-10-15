@@ -27,8 +27,8 @@ export async function POST(req: NextRequest) {
 
     const target = await prisma.member.findUnique({ where: { id: memberId } });
     if (!target) return NextResponse.json({ error: "Member not found" }, { status: 404 });
-    if (target.department.toLowerCase() !== "human resources" && admin.role !== "GB") {
-        return NextResponse.json({ error: "Only HR members can be granted temporary HR powers by HR" }, { status: 403 });
+    if (target.department.toLowerCase() !== "human resources" && !["GB", "HR_EB"].includes(admin.role)) {
+        return NextResponse.json({ error: "Only HR members can be granted temporary HR powers by this role" }, { status: 403 });
     }
 
     const tempRole = grant ? "HR_SE" : null;

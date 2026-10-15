@@ -31,8 +31,9 @@ export type Permission =
 /** Access matrix straight from the spec. */
 const MATRIX: Record<Role, ReadonlySet<Permission>> = {
   MEMBER: new Set<Permission>(["attendance:self"]),
-  // EB, HR_EB and GB are peers: Directors run events, announcements and
-  // sign-out approvals club-wide. members:manage stays GB-only.
+  // EB, HR_EB and GB: Directors run events, announcements and
+  // sign-out approvals club-wide. GB and HR_EB both have full administrative
+  // powers including members:manage.
   EB: new Set<Permission>([
     "attendance:self",
     "attendance:scan",
@@ -51,6 +52,7 @@ const MATRIX: Record<Role, ReadonlySet<Permission>> = {
     "live:all",
     "signout:approve",
     "reports:export",
+    "members:manage",
     "sessions:manage",
     "announcements:manage",
   ]),
@@ -88,10 +90,10 @@ export const SIGNOUT_AUTO_APPROVE_ROLES: Role[] = [Role.EB, Role.HR_EB, Role.HR_
 export const DEPARTMENT_SCOPED_ROLES: Role[] = [Role.SE];
 
 /** Roles notified immediately when a sign-out request is created. */
-export const SIGNOUT_NOTIFY_ROLES: Role[] = [Role.HR_EB, Role.HR_SE, Role.CREATIVE_SE];
+export const SIGNOUT_NOTIFY_ROLES: Role[] = [Role.GB, Role.HR_EB, Role.HR_SE, Role.CREATIVE_SE];
 
 /** Roles the request escalates to after 30 minutes with no response. */
-export const SIGNOUT_ESCALATION_ROLES: Role[] = [Role.GB, Role.HR_SE];
+export const SIGNOUT_ESCALATION_ROLES: Role[] = [Role.GB, Role.HR_EB, Role.HR_SE];
 
 /**
  * Department scoping for approvals: SE may only act on their own department.
