@@ -316,14 +316,20 @@ export function BoardingPass({
 
   function handleDownloadPass() {
     setDownloading(true);
+    // 3x Super Retina High-Definition Export (3072 x 1305) for crisp, razor-sharp zoom
+    const scale = 3;
     const canvas = document.createElement("canvas");
-    canvas.width = 1024;
-    canvas.height = 435;
+    canvas.width = 1024 * scale;
+    canvas.height = 435 * scale;
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       setDownloading(false);
       return;
     }
+
+    ctx.scale(scale, scale);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
 
     const activeVariant = variants.find((v) => v.id === doomVariant) || variants[0];
     const img = new window.Image();
@@ -535,6 +541,8 @@ export function BoardingPass({
         if (!clonedSvg.getAttribute("xmlns")) {
           clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
         }
+        clonedSvg.setAttribute("width", "344");
+        clonedSvg.setAttribute("height", "344");
         const xml = new XMLSerializer().serializeToString(clonedSvg);
         const qrImg = new Image();
         qrImg.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml);
