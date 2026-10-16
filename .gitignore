@@ -18,3 +18,4 @@ tunnel.log
 *.xlsx
 *.db
 prisma/*.db
+scratch/

@@ -3,17 +3,19 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { format, differenceInHours } from "date-fns";
-import { CalendarPlus, QrCode, RefreshCw, Megaphone, Users, Ticket, ExternalLink } from "lucide-react";
+import { CalendarPlus, QrCode, RefreshCw, Megaphone, Users, Ticket, ExternalLink, Palette } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 import { UpcomingSessionTracker } from "@/components/upcoming-session-tracker";
+import { ThemeManagerTab } from "@/components/theme-manager-tab";
 
 const TABS = [
   { id: "sessions", label: "Sessions & QR", icon: QrCode },
   { id: "upcoming-tracker", label: "Upcoming Session Tracker", icon: Ticket },
+  { id: "themes", label: "Pass Themes", icon: Palette },
   { id: "members", label: "Members", icon: Users },
   { id: "announcements", label: "Announcements", icon: Megaphone },
 ] as const;
@@ -55,6 +57,7 @@ export function AdminPanel() {
       </div>
       {tab === "sessions" && <SessionsTab />}
       {tab === "upcoming-tracker" && <UpcomingSessionTracker />}
+      {tab === "themes" && <ThemeManagerTab />}
       {tab === "members" && <MembersTab />}
       {tab === "announcements" && <AnnouncementsTab />}
     </div>
