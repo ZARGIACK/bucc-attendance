@@ -1,15 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, League_Spartan } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { Analytics } from "@vercel/analytics/react";
 
 const inter = Inter({ subsets: ["latin"] });
-const leagueSpartan = League_Spartan({
-  subsets: ["latin"],
-  weight: ["400", "600", "700", "800"],
-  variable: "--font-league-spartan",
-});
 
 export const metadata: Metadata = {
   title: "BUCC Attendance",
@@ -26,7 +21,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} ${leagueSpartan.variable}`}>
+      <body className={inter.className}>
         <Providers>{children}</Providers>
         <Analytics />
       </body>
