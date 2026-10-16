@@ -1,11 +1,64 @@
 import { NextRequest, NextResponse } from "next/server";
+import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { requirePermission, handleApiError } from "@/lib/api-guards";
-import { uploadThemeVariant } from "@/lib/theme-manager";
+import { uploadThemeVariant, registerThemeVariant } from "@/lib/theme-manager";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const contentType = req.headers.get("content-type") || "";
+
+    // 1. JSON Request: either generating client upload token or registering uploaded variant
+    if (contentType.includes("application/json")) {
+      const body = await req.json();
+
+      // Vercel Blob client upload token generation
+      if (body?.type === "blob.generate-client-token") {
+        const jsonResponse = await handleUpload({
+          body: body as HandleUploadBody,
+          request: req,
+          onBeforeGenerateToken: async (pathname) => {
+            await requirePermission("sessions:manage");
+            return {
+              allowedContentTypes: ["image/png", "image/jpeg", "image/webp", "image/svg+xml"],
+              maximumSizeInBytes: 50 * 1024 * 1024, // 50MB max upload
+            };
+          },
+        });
+        return NextResponse.json(jsonResponse);
+      }
+
+      // Variant registration after client-side upload
+      if (body?.fileUrl) {
+        await requirePermission("sessions:manage");
+        const { folder, packName, name: variantName, accent, fileUrl } = body;
+        if (!folder || !variantName || !fileUrl) {
+          return NextResponse.json(
+            { error: "Folder name, variant name, and file URL are required" },
+            { status: 400 }
+          );
+        }
+
+        const result = await registerThemeVariant({
+          folder,
+          packName,
+          variantName,
+          accent: accent || "#10b981",
+          fileUrl,
+        });
+
+        return NextResponse.json({
+          success: true,
+          variant: result.variant,
+          config: result.config,
+        });
+      }
+
+      return NextResponse.json({ error: "Invalid request payload" }, { status: 400 });
+    }
+
+    // 2. Multipart form fallback: server-side upload
     await requirePermission("sessions:manage");
     const formData = await req.formData();
     const folder = formData.get("folder") as string;

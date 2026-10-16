@@ -157,7 +157,64 @@ export async function setActiveThemePack(packId: string, isLive?: boolean): Prom
 }
 
 /**
- * Upload a new theme variant to Vercel Blob
+/**
+ * Register a theme variant into config (e.g. after direct client upload to Vercel Blob)
+ */
+export async function registerThemeVariant({
+  folder,
+  packName,
+  variantName,
+  accent,
+  fileUrl,
+}: {
+  folder: string;
+  packName?: string;
+  variantName: string;
+  accent: string;
+  fileUrl: string;
+}): Promise<{ config: ThemesConfig; variant: ThemeVariant }> {
+  const sanitizedFolder = folder.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+  const sanitizedVariantId = variantName.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+
+  const config = await getThemesConfig();
+
+  // Find or create pack
+  let pack = config.packs.find((p) => p.id === sanitizedFolder);
+  if (!pack) {
+    pack = {
+      id: sanitizedFolder,
+      name: packName?.trim() || sanitizedFolder.toUpperCase(),
+      folder: sanitizedFolder,
+      isLive: false,
+      variants: [],
+    };
+    config.packs.push(pack);
+  }
+
+  // Create or update variant
+  const newVariant: ThemeVariant = {
+    id: sanitizedVariantId,
+    name: variantName.trim(),
+    fullName: `${pack.name} - ${variantName.trim()}`,
+    file: fileUrl,
+    accent: accent || "#10b981",
+    glow: "from-emerald-600/30 via-teal-600/20 to-emerald-600/30",
+    border: "border-emerald-500/30",
+  };
+
+  const existingVariantIdx = pack.variants.findIndex((v) => v.id === sanitizedVariantId);
+  if (existingVariantIdx >= 0) {
+    pack.variants[existingVariantIdx] = newVariant;
+  } else {
+    pack.variants.push(newVariant);
+  }
+
+  await saveThemesConfig(config);
+  return { config, variant: newVariant };
+}
+
+/**
+ * Upload a new theme variant to Vercel Blob (server-side buffer upload)
  */
 export async function uploadThemeVariant({
   folder,
@@ -187,41 +244,13 @@ export async function uploadThemeVariant({
     contentType,
   });
 
-  const config = await getThemesConfig();
-
-  // Find or create pack
-  let pack = config.packs.find((p) => p.id === sanitizedFolder);
-  if (!pack) {
-    pack = {
-      id: sanitizedFolder,
-      name: packName?.trim() || sanitizedFolder.toUpperCase(),
-      folder: sanitizedFolder,
-      isLive: false,
-      variants: [],
-    };
-    config.packs.push(pack);
-  }
-
-  // Create or update variant
-  const newVariant: ThemeVariant = {
-    id: sanitizedVariantId,
-    name: variantName.trim(),
-    fullName: `${pack.name} - ${variantName.trim()}`,
-    file: blob.url,
-    accent: accent || "#10b981",
-    glow: "from-emerald-600/30 via-teal-600/20 to-emerald-600/30",
-    border: "border-emerald-500/30",
-  };
-
-  const existingVariantIdx = pack.variants.findIndex((v) => v.id === sanitizedVariantId);
-  if (existingVariantIdx >= 0) {
-    pack.variants[existingVariantIdx] = newVariant;
-  } else {
-    pack.variants.push(newVariant);
-  }
-
-  await saveThemesConfig(config);
-  return { config, variant: newVariant };
+  return registerThemeVariant({
+    folder: sanitizedFolder,
+    packName,
+    variantName,
+    accent,
+    fileUrl: blob.url,
+  });
 }
 
 /**

@@ -20,6 +20,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { upload } from "@vercel/blob/client";
+
+async function parseResponseJson(res: Response) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (res.status === 413 || text.includes("Request Entity")) {
+      throw new Error("File exceeds upload limit (Request Entity Too Large). Maximum size is 50MB.");
+    }
+    throw new Error(text || `Server returned ${res.status} ${res.statusText}`);
+  }
+}
 
 export type ThemeVariant = {
   id: string;
@@ -108,7 +121,7 @@ export function ThemeManagerTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ packId, isLive: !currentLive }),
       });
-      const json = await res.json();
+      const json = await parseResponseJson(res);
       if (!res.ok) throw new Error(json.error || "Failed to update theme status");
 
       const packName = packs.find((p) => p.id === packId)?.name || packId;
@@ -130,7 +143,7 @@ export function ThemeManagerTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ packId, variantId }),
       });
-      const json = await res.json();
+      const json = await parseResponseJson(res);
       if (!res.ok) throw new Error(json.error || "Failed to delete theme variant");
 
       toast("success", "Theme variant deleted");
@@ -159,19 +172,37 @@ export function ThemeManagerTab() {
 
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("folder", effectiveFolder);
-      formData.append("packName", folderMode === "new" ? newPackName || newFolderName : "");
-      formData.append("name", variantName.trim());
-      formData.append("accent", accentColor);
-      formData.append("file", selectedFile);
+      const sanitizedFolder = effectiveFolder.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+      const sanitizedVariantId = variantName.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+      const ext = selectedFile.type.includes("png")
+        ? "png"
+        : selectedFile.type.includes("webp")
+        ? "webp"
+        : "jpg";
+      const blobPath = `themes/${sanitizedFolder}/${sanitizedVariantId}.${ext}`;
 
-      const res = await fetch("/api/themes/upload", {
-        method: "POST",
-        body: formData,
+      // 1. Direct browser-to-Blob upload via @vercel/blob/client
+      // Bypasses Vercel's 4.5MB serverless payload limit, supporting full uncompressed files up to 50MB!
+      const newBlob = await upload(blobPath, selectedFile, {
+        access: "public",
+        handleUploadUrl: "/api/themes/upload",
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Upload failed");
+
+      // 2. Register uploaded variant into themes config
+      const regRes = await fetch("/api/themes/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folder: effectiveFolder,
+          packName: folderMode === "new" ? newPackName || newFolderName : "",
+          name: variantName.trim(),
+          accent: accentColor,
+          fileUrl: newBlob.url,
+        }),
+      });
+
+      const json = await parseResponseJson(regRes);
+      if (!regRes.ok) throw new Error(json.error || "Failed to register theme variant");
 
       toast("success", `Uploaded "${variantName}" into folder "${effectiveFolder}"!`);
       // Reset form
@@ -182,7 +213,13 @@ export function ThemeManagerTab() {
       setActiveTab("packs");
       void mutate();
     } catch (err) {
-      toast("error", err instanceof Error ? err.message : "Upload failed");
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      toast(
+        "error",
+        msg.includes("Request Entity")
+          ? "File exceeds upload limit (50MB). Please select a smaller image."
+          : msg
+      );
     } finally {
       setUploading(false);
     }
@@ -428,7 +465,7 @@ export function ThemeManagerTab() {
                         className="max-h-48 rounded-xl object-contain shadow-lg"
                       />
                       <span className="mt-3 text-xs font-medium text-emerald-500">
-                        Click to change image ({selectedFile?.name})
+                        Click to change image ({selectedFile?.name} • {selectedFile ? (selectedFile.size / (1024 * 1024)).toFixed(1) : 0} MB)
                       </span>
                     </div>
                   ) : (
