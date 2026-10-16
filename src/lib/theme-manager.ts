@@ -19,13 +19,15 @@ export type ThemePack = {
 };
 
 export type ThemesConfig = {
-  activePack: string;
+  activePack?: string;
+  activePacks?: string[];
   packs: ThemePack[];
   updatedAt: string;
 };
 
 export const DEFAULT_THEMES_CONFIG: ThemesConfig = {
   activePack: "doom",
+  activePacks: ["doom"],
   packs: [
     {
       id: "doom",
@@ -100,6 +102,12 @@ export async function getThemesConfig(): Promise<ThemesConfig> {
       return DEFAULT_THEMES_CONFIG;
     }
     const data = (await res.json()) as ThemesConfig;
+    if (!data.activePacks) {
+      data.activePacks = data.packs.filter((p) => p.isLive).map((p) => p.id);
+      if (data.activePacks.length === 0 && data.activePack) {
+        data.activePacks = [data.activePack];
+      }
+    }
     return data;
   } catch (err) {
     console.error("[theme-manager] Failed to load config from blob:", err);
@@ -122,23 +130,30 @@ export async function saveThemesConfig(config: ThemesConfig): Promise<string> {
 }
 
 /**
- * Set which theme pack is live
+ * Toggle or set which theme pack is live (allows multiple active theme packs)
  */
-export async function setActiveThemePack(packId: string): Promise<ThemesConfig> {
+export async function toggleThemePackLive(packId: string, setLive?: boolean): Promise<ThemesConfig> {
   const config = await getThemesConfig();
-  const packExists = config.packs.some((p) => p.id === packId);
-  if (!packExists) {
+  const pack = config.packs.find((p) => p.id === packId);
+  if (!pack) {
     throw new Error(`Theme pack "${packId}" does not exist.`);
   }
 
-  config.activePack = packId;
-  config.packs = config.packs.map((p) => ({
-    ...p,
-    isLive: p.id === packId,
-  }));
+  const newStatus = setLive !== undefined ? setLive : !pack.isLive;
+  pack.isLive = newStatus;
+
+  config.activePacks = config.packs.filter((p) => p.isLive).map((p) => p.id);
+  config.activePack = config.activePacks[0] || "";
 
   await saveThemesConfig(config);
   return config;
+}
+
+/**
+ * Backwards compatible setter for active theme pack
+ */
+export async function setActiveThemePack(packId: string, isLive?: boolean): Promise<ThemesConfig> {
+  return toggleThemePackLive(packId, isLive);
 }
 
 /**

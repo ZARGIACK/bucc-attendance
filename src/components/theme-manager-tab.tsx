@@ -41,6 +41,8 @@ export type ThemePack = {
 
 export type ThemesResponse = {
   activePack: string;
+  activePacks?: string[];
+  livePacks?: ThemePack[];
   packs: ThemePack[];
   activeVariants: ThemeVariant[];
   updatedAt: string;
@@ -80,7 +82,8 @@ export function ThemeManagerTab() {
   const [previewVariant, setPreviewVariant] = useState<ThemeVariant | null>(null);
 
   const packs = data?.packs || [];
-  const activePack = packs.find((p) => p.id === data?.activePack) || packs[0];
+  const livePacks = packs.filter((p) => p.isLive);
+  const activePack = livePacks[0] || packs[0];
 
   const effectiveFolder = folderMode === "new" ? newFolderName : (selectedFolder || packs[0]?.folder || "custom");
 
@@ -97,21 +100,22 @@ export function ThemeManagerTab() {
     }
   }
 
-  async function handleMakeLive(packId: string) {
+  async function handleToggleLive(packId: string, currentLive: boolean) {
     setActivatingId(packId);
     try {
       const res = await fetch("/api/themes/active", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ activePackId: packId }),
+        body: JSON.stringify({ packId, isLive: !currentLive }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to set live theme");
+      if (!res.ok) throw new Error(json.error || "Failed to update theme status");
 
-      toast("success", `Activated theme pack: ${packs.find((p) => p.id === packId)?.name || packId}`);
+      const packName = packs.find((p) => p.id === packId)?.name || packId;
+      toast("success", !currentLive ? `Activated "${packName}" (Now Live)` : `Deactivated "${packName}"`);
       void mutate();
     } catch (err) {
-      toast("error", err instanceof Error ? err.message : "Failed to activate theme pack");
+      toast("error", err instanceof Error ? err.message : "Failed to toggle theme pack");
     } finally {
       setActivatingId(null);
     }
@@ -195,14 +199,27 @@ export function ThemeManagerTab() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-white">Live Boarding Pass Theme</h3>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 border border-emerald-500/40 animate-pulse">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                  LIVE
+                <h3 className="font-semibold text-white">Live Boarding Pass Collections</h3>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 border border-emerald-500/40">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {livePacks.length} Active
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                Active Pack: <span className="font-semibold text-emerald-400">{activePack?.name || "None"}</span> (Folder: <code className="text-emerald-300 font-mono">themes/{activePack?.folder || "doom"}/</code>)
+                {livePacks.length === 0 ? (
+                  <span className="text-amber-400">No theme pack active — attendees will see default theme</span>
+                ) : (
+                  <span>
+                    Active Collections:{" "}
+                    {livePacks.map((p, idx) => (
+                      <span key={p.id}>
+                        {idx > 0 && <span className="text-slate-500"> • </span>}
+                        <span className="font-semibold text-emerald-400">{p.name}</span>{" "}
+                        <code className="text-emerald-300/80 font-mono text-[11px]">(themes/{p.folder}/)</code>
+                      </span>
+                    ))}
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -461,7 +478,7 @@ export function ThemeManagerTab() {
         /* Packs & Variants Grid */
         <div className="space-y-8">
           {packs.map((pack) => {
-            const isLive = pack.id === data?.activePack;
+            const isLive = Boolean(pack.isLive);
 
             return (
               <div
@@ -506,11 +523,31 @@ export function ThemeManagerTab() {
                   </div>
 
                   <div className="flex items-center gap-2 self-end sm:self-auto">
-                    {!isLive ? (
+                    {isLive ? (
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
+                          <Check className="h-3.5 w-3.5 text-emerald-400" /> Serving to Attendees
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={activatingId === pack.id}
+                          onClick={() => handleToggleLive(pack.id, isLive)}
+                          className="border-slate-700 bg-slate-800/80 hover:bg-rose-500/10 hover:border-rose-500/40 text-slate-300 hover:text-rose-400 text-xs rounded-xl font-medium"
+                          title="Deactivate this theme pack"
+                        >
+                          {activatingId === pack.id ? (
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            "Deactivate"
+                          )}
+                        </Button>
+                      </div>
+                    ) : (
                       <Button
                         size="sm"
                         disabled={activatingId === pack.id}
-                        onClick={() => handleMakeLive(pack.id)}
+                        onClick={() => handleToggleLive(pack.id, isLive)}
                         className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs rounded-xl shadow-sm"
                       >
                         {activatingId === pack.id ? (
@@ -523,10 +560,6 @@ export function ThemeManagerTab() {
                           </span>
                         )}
                       </Button>
-                    ) : (
-                      <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
-                        <Check className="h-3.5 w-3.5 text-emerald-400" /> Currently Serving to Attendees
-                      </span>
                     )}
                   </div>
                 </div>

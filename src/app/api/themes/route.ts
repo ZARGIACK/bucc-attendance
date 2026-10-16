@@ -7,10 +7,15 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const config = await getThemesConfig();
-    const activePack = config.packs.find((p) => p.id === config.activePack) || config.packs[0];
+    const livePacks = config.packs.filter((p) => p.isLive);
+    const activePacksList = livePacks.length > 0 ? livePacks : [config.packs[0]].filter(Boolean);
+    const activePack = activePacksList[0];
+
     return NextResponse.json({
-      activePack: config.activePack,
+      activePack: activePack?.id || "",
+      activePacks: activePacksList.map((p) => p.id),
       packs: config.packs,
+      livePacks: activePacksList,
       activeVariants: activePack ? activePack.variants : [],
       updatedAt: config.updatedAt,
     });

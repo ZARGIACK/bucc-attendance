@@ -124,8 +124,8 @@ export function BoardingPass({
   const [member, setMember] = useState<MemberInfo | null>(currentMember || null);
   const [status, setStatus] = useState<RsvpStatus>(initialStatus);
   const [loading, setLoading] = useState(false);
-  const [passTheme, setPassTheme] = useState<"doom" | "classic">("doom");
-  const [doomVariant, setDoomVariant] = useState<string>("stained-glass");
+  const [passTheme, setPassTheme] = useState<string>("doom");
+  const [selectedVariantId, setSelectedVariantId] = useState<string>("stained-glass");
   const [downloading, setDownloading] = useState(false);
   const [studentIdInput, setStudentIdInput] = useState("");
   const [searchingMember, setSearchingMember] = useState(false);
@@ -133,43 +133,76 @@ export function BoardingPass({
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [mobilePassModalUrl, setMobilePassModalUrl] = useState<string | null>(null);
 
+  type ThemeVariantItem = {
+    id: string;
+    name: string;
+    fullName?: string;
+    file: string;
+    accent: string;
+    glow?: string;
+    border?: string;
+  };
+
+  type ThemePackItem = {
+    id: string;
+    name: string;
+    folder: string;
+    isLive: boolean;
+    variants: ThemeVariantItem[];
+  };
+
   // Fetch dynamic themes from Vercel Blob
   const { data: themesData } = useSWR<{
     activePack: string;
-    packs: Array<{ id: string; name: string; folder: string; isLive: boolean }>;
-    activeVariants: Array<{
-      id: string;
-      name: string;
-      fullName?: string;
-      file: string;
-      accent: string;
-      glow?: string;
-      border?: string;
-    }>;
+    activePacks?: string[];
+    livePacks?: ThemePackItem[];
+    packs: ThemePackItem[];
+    activeVariants: ThemeVariantItem[];
   }>("/api/themes");
 
-  const variants =
-    themesData?.activeVariants && themesData.activeVariants.length > 0
-      ? themesData.activeVariants
-      : (DOOM_VARIANTS as unknown as Array<{
-          id: string;
-          name: string;
-          fullName?: string;
-          file: string;
-          accent: string;
-          glow?: string;
-          border?: string;
-        }>);
+  const fallbackPacks: ThemePackItem[] = [
+    {
+      id: "doom",
+      name: "Doctor Doom Collection",
+      folder: "doom",
+      isLive: true,
+      variants: DOOM_VARIANTS as unknown as ThemeVariantItem[],
+    },
+  ];
 
-  const activePackName =
-    themesData?.packs?.find((p) => p.id === themesData.activePack)?.name || "Doom Edition";
+  // All live packs currently active
+  const livePacks: ThemePackItem[] =
+    themesData?.livePacks && themesData.livePacks.length > 0
+      ? themesData.livePacks
+      : themesData?.packs?.filter((p) => p.isLive && p.variants?.length > 0).length
+      ? themesData.packs.filter((p) => p.isLive && p.variants?.length > 0)
+      : fallbackPacks;
+
+  // Selected pack (defaults to first live pack or selected passTheme)
+  const currentPack: ThemePackItem =
+    livePacks.find((p) => p.id === passTheme) ||
+    livePacks.find((p) => p.id === themesData?.activePack) ||
+    livePacks[0] ||
+    fallbackPacks[0];
+
+  const variants =
+    currentPack?.variants && currentPack.variants.length > 0
+      ? currentPack.variants
+      : fallbackPacks[0].variants;
+
+  // Auto-switch passTheme if current pack is no longer in livePacks
+  useEffect(() => {
+    if (passTheme !== "classic" && livePacks.length > 0 && !livePacks.some((p) => p.id === passTheme)) {
+      setPassTheme(livePacks[0].id);
+    }
+  }, [livePacks, passTheme]);
 
   // Auto-select first variant if current selection is not present in active pack
   useEffect(() => {
-    if (variants.length > 0 && !variants.some((v) => v.id === doomVariant)) {
-      setDoomVariant(variants[0].id);
+    if (variants.length > 0 && !variants.some((v) => v.id === selectedVariantId)) {
+      setSelectedVariantId(variants[0].id);
     }
-  }, [variants, doomVariant]);
+  }, [variants, selectedVariantId]);
 
   // Sync session if initial changes
   useEffect(() => {
@@ -331,7 +364,7 @@ export function BoardingPass({
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
 
-    const activeVariant = variants.find((v) => v.id === doomVariant) || variants[0];
+    const activeVariant = variants.find((v) => v.id === selectedVariantId) || variants[0];
     const img = new window.Image();
     img.crossOrigin = "anonymous";
     const srcUrl = activeVariant.file.startsWith("http")
@@ -583,7 +616,7 @@ export function BoardingPass({
   };
 }
 
-  const activeVariant = variants.find((v) => v.id === doomVariant) || variants[0];
+  const activeVariant = variants.find((v) => v.id === selectedVariantId) || variants[0];
 
   const meetingDate = selectedSession?.startsAt
     ? format(new Date(selectedSession.startsAt), "EEE, d MMMM yyyy")
@@ -639,20 +672,26 @@ export function BoardingPass({
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Theme switcher */}
-          <div className="flex items-center bg-slate-100 dark:bg-navy-800 p-0.5 rounded-xl border border-slate-200 dark:border-navy-700">
-            <button
-              type="button"
-              onClick={() => setPassTheme("doom")}
-              className={cn(
-                "px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
-                passTheme === "doom"
-                  ? "bg-emerald-600 text-white shadow-sm"
-                  : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              )}
-            >
-              <Sparkles className="h-3 w-3 text-emerald-300" />
-              Doom Edition
-            </button>
+          <div className="flex flex-wrap items-center bg-slate-100 dark:bg-navy-800 p-0.5 rounded-xl border border-slate-200 dark:border-navy-700">
+            {livePacks.map((pack) => {
+              const isSelected = passTheme === pack.id;
+              return (
+                <button
+                  key={pack.id}
+                  type="button"
+                  onClick={() => setPassTheme(pack.id)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                    isSelected
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                  )}
+                >
+                  <Sparkles className="h-3 w-3 text-emerald-300" />
+                  {pack.name}
+                </button>
+              );
+            })}
             <button
               type="button"
               onClick={() => setPassTheme("classic")}
@@ -712,24 +751,24 @@ export function BoardingPass({
       )}
 
       {/* ── THE BOARDING PASS TICKET ───────────────────────────────────── */}
-      {passTheme === "doom" ? (
+      {passTheme !== "classic" ? (
         <div className="space-y-4">
           {/* Active Theme Variant Selector */}
           <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-white/70 dark:bg-navy-900/70 backdrop-blur-md border border-slate-200/80 dark:border-navy-800 shadow-sm print:hidden">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-emerald-500" />
               <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                {activePackName} Style:
+                {currentPack?.name || "Theme"} Style:
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               {variants.map((v) => {
-                const active = doomVariant === v.id;
+                const active = selectedVariantId === v.id;
                 return (
                   <button
                     key={v.id}
                     type="button"
-                    onClick={() => setDoomVariant(v.id)}
+                    onClick={() => setSelectedVariantId(v.id)}
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200",
                       active
