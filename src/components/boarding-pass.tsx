@@ -448,6 +448,11 @@ export function BoardingPass({
           (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
             (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 
+        const isMobile =
+          typeof navigator !== "undefined" &&
+          (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+
         const filename = `BUCC-BoardingPass-${activeVariant.id}-${passId !== "—" ? passId : "Doom"}.png`;
 
         canvas.toBlob(
@@ -468,9 +473,10 @@ export function BoardingPass({
               return;
             }
 
-            // Try native iOS / mobile Web Share API with file (allows direct Save Image to Photos!)
+            // Only on mobile devices (iOS / Android) use the mobile Share Sheet ("Save Image to Photos")
             const file = new File([blob], filename, { type: "image/png" });
             if (
+              isMobile &&
               typeof navigator !== "undefined" &&
               typeof navigator.share === "function" &&
               navigator.canShare &&
