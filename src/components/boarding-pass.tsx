@@ -26,6 +26,7 @@ import {
   QrCode as QrIcon,
   Download,
   Palette,
+  X,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
@@ -130,6 +131,7 @@ export function BoardingPass({
   const [searchingMember, setSearchingMember] = useState(false);
   const [copied, setCopied] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [mobilePassModalUrl, setMobilePassModalUrl] = useState<string | null>(null);
 
   // Fetch dynamic themes from Vercel Blob
   const { data: themesData } = useSWR<{
@@ -326,8 +328,18 @@ export function BoardingPass({
     const activeVariant = variants.find((v) => v.id === doomVariant) || variants[0];
     const img = new window.Image();
     img.crossOrigin = "anonymous";
-    img.src = activeVariant.file;
+    const srcUrl = activeVariant.file.startsWith("http")
+      ? `${activeVariant.file}${activeVariant.file.includes("?") ? "&" : "?"}t=${Date.now()}`
+      : activeVariant.file;
+    img.src = srcUrl;
+
+    const timeout = setTimeout(() => {
+      setDownloading(false);
+      toast("error", "Generating pass took too long. Please try again.");
+    }, 20000);
+
     img.onload = () => {
+      try {
       ctx.drawImage(img, 0, 0, 1024, 435);
 
       const passName = formatPassengerName(member?.name);
@@ -430,16 +442,83 @@ export function BoardingPass({
       drawTextWithShadow(passFlight, 880, 344, "bold 13px 'League Spartan', monospace, sans-serif", "#6EE7B7");
 
       const finishDownload = () => {
-        const link = document.createElement("a");
-        link.download = `BUCC-BoardingPass-${activeVariant.id}-${passId !== "—" ? passId : "Doom"}.png`;
-        link.href = canvas.toDataURL("image/png");
-        document.body.appendChild(link);
-        link.click();
-        setTimeout(() => {
-          document.body.removeChild(link);
-        }, 100);
-        toast("success", `Boarding pass (${activeVariant.name}) downloaded!`);
-        setDownloading(false);
+        clearTimeout(timeout);
+        const isIOS =
+          typeof navigator !== "undefined" &&
+          (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+
+        const filename = `BUCC-BoardingPass-${activeVariant.id}-${passId !== "—" ? passId : "Doom"}.png`;
+
+        canvas.toBlob(
+          async (blob) => {
+            if (!blob) {
+              const dataUrl = canvas.toDataURL("image/png");
+              if (isIOS) {
+                setMobilePassModalUrl(dataUrl);
+              } else {
+                const link = document.createElement("a");
+                link.download = filename;
+                link.href = dataUrl;
+                document.body.appendChild(link);
+                link.click();
+                setTimeout(() => document.body.removeChild(link), 200);
+              }
+              setDownloading(false);
+              return;
+            }
+
+            // Try native iOS / mobile Web Share API with file (allows direct Save Image to Photos!)
+            const file = new File([blob], filename, { type: "image/png" });
+            if (
+              typeof navigator !== "undefined" &&
+              typeof navigator.share === "function" &&
+              navigator.canShare &&
+              navigator.canShare({ files: [file] })
+            ) {
+              try {
+                await navigator.share({
+                  files: [file],
+                  title: "BUCC Airways Boarding Pass",
+                  text: "My official BUCC Airways Boarding Pass",
+                });
+                toast("success", "Saved to Photos / Shared!");
+                setDownloading(false);
+                return;
+              } catch (shareErr: unknown) {
+                if (shareErr instanceof Error && shareErr.name === "AbortError") {
+                  setDownloading(false);
+                  return;
+                }
+                console.warn("Share failed, falling back to modal", shareErr);
+              }
+            }
+
+            // On iOS if share was dismissed or unavailable (e.g. in-app browser)
+            if (isIOS) {
+              const dataUrl = canvas.toDataURL("image/png");
+              setMobilePassModalUrl(dataUrl);
+              setDownloading(false);
+              return;
+            }
+
+            // Standard desktop download
+            const blobUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.download = filename;
+            link.href = blobUrl;
+            document.body.appendChild(link);
+            link.click();
+            setTimeout(() => {
+              document.body.removeChild(link);
+              URL.revokeObjectURL(blobUrl);
+            }, 2000);
+
+            toast("success", `Boarding pass (${activeVariant.name}) downloaded!`);
+            setDownloading(false);
+          },
+          "image/png"
+        );
       };
 
       const qrSvg = document.getElementById("doom-qr-svg");
@@ -447,6 +526,9 @@ export function BoardingPass({
         const clonedSvg = qrSvg.cloneNode(true) as SVGSVGElement;
         const bgPath = clonedSvg.querySelector("path:first-child");
         if (bgPath) bgPath.setAttribute("fill", "none");
+        if (!clonedSvg.getAttribute("xmlns")) {
+          clonedSvg.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        }
         const xml = new XMLSerializer().serializeToString(clonedSvg);
         const qrImg = new Image();
         qrImg.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml);
@@ -472,12 +554,20 @@ export function BoardingPass({
       } else {
         finishDownload();
       }
-    };
-    img.onerror = () => {
-      toast("error", "Failed to load template image for download");
+    } catch (drawErr) {
+      clearTimeout(timeout);
+      console.error("Canvas draw error:", drawErr);
+      toast("error", "Error creating pass. Please try again.");
       setDownloading(false);
-    };
-  }
+    }
+  };
+
+  img.onerror = () => {
+    clearTimeout(timeout);
+    toast("error", "Failed to load template image for download");
+    setDownloading(false);
+  };
+}
 
   const activeVariant = variants.find((v) => v.id === doomVariant) || variants[0];
 
@@ -654,6 +744,7 @@ export function BoardingPass({
             />
             <div className="relative aspect-[1024/435] w-full select-none filter drop-shadow-[0_16px_32px_rgba(0,0,0,0.6)]">
               <img
+                crossOrigin="anonymous"
                 src={activeVariant.file}
                 alt={`BUCC Airways Boarding Pass - ${activeVariant.fullName}`}
                 className="w-full h-full object-contain pointer-events-none"
@@ -1201,6 +1292,64 @@ export function BoardingPass({
                     *{member?.studentId || "00000000"}*BUCC*2026*
                   </p>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* iOS & Mobile Fallback Modal: Touch & Hold to Save */}
+      {mobilePassModalUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md"
+          onClick={() => setMobilePassModalUrl(null)}
+        >
+          <div
+            className="relative max-w-lg w-full rounded-3xl bg-navy-950 p-5 border border-slate-700 shadow-2xl flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between w-full pb-3 border-b border-slate-800 mb-3">
+              <div className="flex items-center gap-2 text-white font-semibold text-sm">
+                <Download className="h-4 w-4 text-emerald-400" /> Save Boarding Pass
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobilePassModalUrl(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="rounded-2xl overflow-hidden border border-slate-700 bg-black/40 shadow-xl my-2 w-full">
+              <img
+                src={mobilePassModalUrl}
+                alt="Generated Boarding Pass"
+                className="w-full h-auto select-auto"
+              />
+            </div>
+
+            <div className="w-full text-center space-y-3 mt-3">
+              <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-center gap-2">
+                <span>📲 <strong>Tap & hold the pass above</strong> and choose <strong>&quot;Save to Photos&quot;</strong>.</span>
+              </div>
+
+              <div className="flex gap-2 w-full">
+                <Button
+                  variant="secondary"
+                  className="flex-1 text-xs"
+                  onClick={() => {
+                    window.open(mobilePassModalUrl, "_blank");
+                  }}
+                >
+                  Open in New Tab
+                </Button>
+                <Button
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs"
+                  onClick={() => setMobilePassModalUrl(null)}
+                >
+                  Done
+                </Button>
               </div>
             </div>
           </div>
