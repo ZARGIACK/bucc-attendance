@@ -14,6 +14,7 @@ import { useRealtime } from "@/hooks/use-realtime";
 type HistoryRow = {
   id: string;
   checkInAt: string;
+  checkOutRequestedAt?: string | null;
   checkOutApprovedAt: string | null;
   status: string;
   method: string;
@@ -88,7 +89,9 @@ export function PersonalView() {
                       <td className="px-4 py-2.5 font-medium">{r.session.name}</td>
                       <td className="whitespace-nowrap px-4 py-2.5">{format(new Date(r.checkInAt), "d MMM, h:mm a")}</td>
                       <td className="whitespace-nowrap px-4 py-2.5">
-                        {r.checkOutApprovedAt ? format(new Date(r.checkOutApprovedAt), "h:mm a") : "—"}
+                        {r.checkOutRequestedAt || r.checkOutApprovedAt
+                          ? format(new Date(r.checkOutRequestedAt || r.checkOutApprovedAt!), "h:mm a")
+                          : "—"}
                       </td>
                       <td className="px-4 py-2.5">{r.durationMinutes != null ? formatDuration(r.durationMinutes) : "—"}</td>
                       <td className="px-4 py-2.5"><StatusBadge status={r.status} /></td>

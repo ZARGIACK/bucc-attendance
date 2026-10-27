@@ -192,8 +192,8 @@ export function LiveBoard({ global, canExport }: { global: boolean, canExport?: 
                     <td className="px-4 py-2.5">{r.session.name}</td>
                     <td className="whitespace-nowrap px-4 py-2.5">{format(new Date(r.checkInAt), "h:mm a")}</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-slate-500">
-                      {r.checkOutApprovedAt || r.checkOutRequestedAt
-                        ? format(new Date(r.checkOutApprovedAt || r.checkOutRequestedAt!), "h:mm a")
+                      {r.checkOutRequestedAt || r.checkOutApprovedAt
+                        ? format(new Date(r.checkOutRequestedAt || r.checkOutApprovedAt!), "h:mm a")
                         : "—"}
                     </td>
                     <td className="px-4 py-2.5"><StatusBadge status={r.status} /></td>

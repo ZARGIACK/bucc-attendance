@@ -116,8 +116,9 @@ export async function GET(req: NextRequest) {
       const checkInTime = r.checkInAt ? r.checkInAt.toLocaleTimeString('en-US', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit' }) : "";
       
       const isForcedOut = r.status === AttendanceStatus.LEFT_FORCED;
-      const checkOutTime = (!isForcedOut && r.checkOutApprovedAt) 
-        ? r.checkOutApprovedAt.toLocaleTimeString('en-US', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit' }) 
+      const effectiveCheckOut = r.checkOutRequestedAt || r.checkOutApprovedAt;
+      const checkOutTime = (!isForcedOut && effectiveCheckOut) 
+        ? effectiveCheckOut.toLocaleTimeString('en-US', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit' }) 
         : "";
       const forcedText = isForcedOut ? "forced" : "";
 

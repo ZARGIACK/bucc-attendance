@@ -225,6 +225,7 @@ export async function reviewSignout(
         where: { id: request.attendanceId },
         data: {
           status: AttendanceStatus.LEFT,
+          checkOutRequestedAt: effectiveOut,
           checkOutApprovedAt: effectiveOut,
           approvedById: approver.id,
           durationMinutes: duration,
@@ -343,6 +344,7 @@ export async function escalateStaleRequests(): Promise<{ escalated: number; auto
         where: { id: req.attendanceId },
         data: {
           status: AttendanceStatus.LEFT,
+          checkOutRequestedAt: effectiveOut,
           checkOutApprovedAt: effectiveOut,
           durationMinutes: duration,
         },
