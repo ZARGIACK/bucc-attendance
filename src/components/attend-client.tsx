@@ -342,7 +342,7 @@ export function AttendClient({ member }: { member: any }) {
                     className="w-full"
                     loading={busy === s.id}
                     onClick={() => {
-                      if (s.requiresFeedback && !["EB", "HR_EB", "GB"].includes(member.role)) {
+                      if (s.requiresFeedback && !["EB", "HR_EB", "HR_SE", "GB"].includes(member.role)) {
                         setSigningOutSession(s.id);
                       } else {
                         signOut(s.id);

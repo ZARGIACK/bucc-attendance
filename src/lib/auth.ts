@@ -64,11 +64,19 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
     async jwt({ token, user }) {
-      if (user?.email) {
-        const member = await prisma.member.findUnique({ where: { email: user.email } });
+      const email = user?.email || (token.email as string | undefined);
+      const memberId = token.memberId as string | undefined;
+      if (email || memberId) {
+        const member = await prisma.member.findFirst({
+          where: memberId ? { id: memberId } : { email: email! },
+        });
         if (member) {
           token.memberId = member.id;
-          token.role = member.role;
+          let role = member.role;
+          if (member.tempRole && member.tempRoleExpiresAt && member.tempRoleExpiresAt > new Date()) {
+            role = member.tempRole;
+          }
+          token.role = role;
         }
       }
       return token;

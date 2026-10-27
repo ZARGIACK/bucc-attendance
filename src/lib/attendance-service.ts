@@ -110,7 +110,7 @@ export async function requestSignout(member: Member, sessionId: string, notes?: 
   }
 
   // Validate feedback requirement for non-admin roles
-  const needsFeedback = attendance.session.requiresFeedback && !["EB", "HR_EB", "GB"].includes(member.role);
+  const needsFeedback = attendance.session.requiresFeedback && !["EB", "HR_EB", "HR_SE", "GB"].includes(member.role);
   if (needsFeedback && (!notes || !notes.trim())) {
     throw new ApiError(400, "Feedback is required to sign out of this session");
   }
@@ -159,9 +159,15 @@ export async function requestSignout(member: Member, sessionId: string, notes?: 
     }),
   ]);
 
-  // Notify HR_EB + HR_SE in realtime.
+  // Notify HR_EB + HR_SE in realtime (including temp powers).
   const approvers = await prisma.member.findMany({
-    where: { role: { in: SIGNOUT_NOTIFY_ROLES }, isActive: true },
+    where: {
+      OR: [
+        { role: { in: SIGNOUT_NOTIFY_ROLES } },
+        { tempRole: { in: SIGNOUT_NOTIFY_ROLES }, tempRoleExpiresAt: { gt: new Date() } },
+      ],
+      isActive: true,
+    },
     select: { id: true },
   });
   await notifyMembers({

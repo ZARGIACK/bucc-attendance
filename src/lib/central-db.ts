@@ -28,7 +28,7 @@ export function deriveRole(department: string, designation: string): Role {
     return Role.GB;
   }
   if (desg.includes("director")) return isHR ? Role.HR_EB : Role.EB;
-  if (desg.includes("senior executive")) {
+  if (desg.includes("senior executive") || (isHR && desg.includes("executive"))) {
     if (isHR) return Role.HR_SE;
     if (isCreative) return Role.CREATIVE_SE;
     return Role.SE;

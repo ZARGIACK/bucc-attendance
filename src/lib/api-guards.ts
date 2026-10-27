@@ -61,7 +61,8 @@ export function handleApiError(err: unknown): NextResponse {
 export function assertSameOrigin(req: Request): void {
   const origin = req.headers.get("origin");
   if (!origin) return; // same-origin fetches may omit Origin; Lax cookie covers it
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  const rawHost = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  const host = rawHost?.split(",")[0].trim();
   try {
     if (new URL(origin).host !== host) {
       throw new ApiError(403, "Cross-origin request rejected");
