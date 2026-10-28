@@ -26,7 +26,7 @@ export function NotificationBell() {
 
   const { data, mutate } = useSWR<{ notifications: NotificationRow[]; unread: number }>(
     "/api/notifications",
-    { refreshInterval: 60000 },
+    { refreshInterval: 30000 },
   );
   const unread = data?.unread ?? 0;
 
@@ -130,7 +130,7 @@ export function NotificationBell() {
                       )}
                     >
                       <p className="text-slate-800 dark:text-slate-100 text-xs sm:text-sm leading-snug">{n.message}</p>
-                      
+
                       <div className="mt-2 flex items-center justify-between gap-2">
                         <span className="text-[11px] text-slate-400">
                           {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
