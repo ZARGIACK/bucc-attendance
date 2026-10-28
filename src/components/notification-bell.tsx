@@ -26,7 +26,7 @@ export function NotificationBell() {
 
   const { data, mutate } = useSWR<{ notifications: NotificationRow[]; unread: number }>(
     "/api/notifications",
-    { refreshInterval: 15000 }, // polling fallback; SSE revalidates sooner
+    { refreshInterval: 60000 },
   );
   const unread = data?.unread ?? 0;
 

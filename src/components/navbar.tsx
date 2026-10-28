@@ -27,7 +27,7 @@ export function Navbar() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const { data: preEventStatus } = useSWR<{ hasActivePreEvent: boolean }>("/api/pre-event/status", {
     revalidateOnFocus: true,
-    refreshInterval: 10000,
+    refreshInterval: 120000,
   });
 
   const role = session?.user?.role ?? "MEMBER";

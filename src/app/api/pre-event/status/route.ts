@@ -27,10 +27,17 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({
-      hasActivePreEvent: !!activePreEvent,
-      session: activePreEvent,
-    });
+    return NextResponse.json(
+      {
+        hasActivePreEvent: !!activePreEvent,
+        session: activePreEvent,
+      },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
+        },
+      }
+    );
   } catch (err) {
     return handleApiError(err);
   }
