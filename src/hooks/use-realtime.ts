@@ -1,41 +1,19 @@
 "use client";
 
 /**
- * Subscribes to the SSE stream and revalidates SWR caches when events
- * arrive. If the stream drops, EventSource auto-reconnects; data still
- * refreshes via SWR's focus/interval revalidation, so realtime is an
- * enhancement, never a requirement.
+ * Realtime hook.
+ *
+ * NOTE FOR SERVERLESS / VERCEL:
+ * Persistent Server-Sent Events (EventSource) connections on Vercel keep
+ * serverless lambda instances continuously active 24/7, causing severe
+ * Fluid Provisioned Memory (GB-Hrs) quota exhaustion.
+ *
+ * Data refreshes reliably across the app via SWR's interval and focus revalidation,
+ * so persistent streaming is disabled here to keep Vercel execution cost at near-zero.
  */
-import { useEffect, useRef } from "react";
-import { useSWRConfig } from "swr";
 import type { RealtimeEvent } from "@/lib/realtime";
 
-export function useRealtime(onEvent?: (e: RealtimeEvent) => void) {
-  const { mutate } = useSWRConfig();
-  const handler = useRef(onEvent);
-  handler.current = onEvent;
-
-  useEffect(() => {
-    const es = new EventSource("/api/notifications/stream");
-    es.onmessage = (msg) => {
-      try {
-        const event: RealtimeEvent = JSON.parse(msg.data);
-        // Revalidate everything the event could have changed.
-        void mutate(
-          (key) =>
-            typeof key === "string" &&
-            (key.startsWith("/api/dashboard") ||
-              key.startsWith("/api/approvals") ||
-              key.startsWith("/api/notifications") ||
-              key.startsWith("/api/attendance")),
-          undefined,
-          { revalidate: true },
-        );
-        handler.current?.(event);
-      } catch {
-        /* ignore malformed frames */
-      }
-    };
-    return () => es.close();
-  }, [mutate]);
+export function useRealtime(_onEvent?: (e: RealtimeEvent) => void) {
+  // SWR handles data fetching, polling intervals, and window-focus revalidation
+  // without keeping long-lived HTTP streams open on serverless lambdas.
 }

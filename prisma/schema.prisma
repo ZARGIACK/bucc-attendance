@@ -110,6 +110,7 @@ model PreEventRsvp {
 model Attendance {
   id                   String           @id @default(cuid())
   memberId             String           @map("member_id")
+  memberName           String?          @map("member_name")
   sessionId            String           @map("session_id")
   checkInAt            DateTime         @default(now()) @map("check_in_at")
   checkOutRequestedAt  DateTime?        @map("check_out_requested_at")

@@ -76,10 +76,10 @@ export function UpcomingSessionTracker({ defaultSessionId }: { defaultSessionId?
   const [deptFilter, setDeptFilter] = useState<string>("ALL");
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Poll every 3s for snappy real-time live updates
+  // Poll every 60s (plus automatic revalidation on focus) to preserve serverless compute
   const { data, error, isLoading, mutate } = useSWR<PreEventApiResponse>(
     `/api/pre-event?sessionId=${selectedSessionId || ""}`,
-    { refreshInterval: 3000 }
+    { refreshInterval: 60000 }
   );
 
   const sessions = data?.sessions ?? [];

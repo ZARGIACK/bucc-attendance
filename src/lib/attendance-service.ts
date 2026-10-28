@@ -58,6 +58,7 @@ export async function checkIn(
     const attendance = await prisma.attendance.create({
       data: {
         memberId: member.id,
+        memberName: member.name,
         sessionId,
         method,
         checkInIp: audit.ip,
