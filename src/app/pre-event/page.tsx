@@ -127,12 +127,6 @@ export default async function PreEventPage({
                 Leadership can activate pre-event registration for any upcoming session from the Sessions panel.
               </p>
             </div>
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-electric-600 dark:text-electric-400 hover:underline"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" /> Back to Dashboard
-            </Link>
           </div>
         ) : (
           <BoardingPass

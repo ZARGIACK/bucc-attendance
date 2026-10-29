@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
-import { LogOut, Moon, Sun, QrCode, HelpCircle, LayoutDashboard } from "lucide-react";
+import { LogOut, Moon, Sun, QrCode, HelpCircle, LayoutDashboard, User } from "lucide-react";
 import { useState } from "react";
 import useSWR from "swr";
 import { NotificationBell } from "@/components/notification-bell";
@@ -125,7 +125,7 @@ export function Navbar() {
                         onClick={() => setIsProfileOpen(false)}
                         className="flex w-full items-center rounded-md px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-200 dark:hover:bg-navy-800 dark:hover:text-white"
                       >
-                        <LayoutDashboard className="mr-2 h-4 w-4" aria-hidden /> Dashboard
+                        <User className="mr-2 h-4 w-4" aria-hidden /> My Profile
                       </Link>
                       <Link
                         href="/dashboard/support"

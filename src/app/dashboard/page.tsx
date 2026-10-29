@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PlaneTakeoff } from "lucide-react";
 import { requirePageMember } from "@/lib/page-guards";
-import { PersonalView } from "@/components/personal-view";
+import { MemberProfile } from "@/components/member-profile";
 import { DashboardLiveMeeting } from "@/components/dashboard-live-meeting";
 import { prisma } from "@/lib/prisma";
 
@@ -20,30 +20,25 @@ export default async function DashboardPage() {
   ]);
 
   return (
-    <>
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold">My Attendance</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            {member.name} · {member.studentId} · {member.department} · {member.designation}
-          </p>
-        </div>
-        {/* Pre-event button only turns on before meeting starts */}
-        {activePreEvent && (
+    <div className="space-y-6">
+      {/* Pre-event button only turns on before meeting starts */}
+      {activePreEvent && (
+        <div className="flex justify-end">
           <Link
             href="/pre-event"
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-electric-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:from-electric-500 hover:to-indigo-500 transition-all self-start sm:self-auto"
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-electric-600 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:from-electric-500 hover:to-indigo-500 transition-all"
           >
             <PlaneTakeoff className="h-4 w-4" />
             Pre-Event Boarding Pass
           </Link>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Automatically turns on when actual meeting is live for QR Scan */}
       <DashboardLiveMeeting member={member} />
 
-      <PersonalView />
-    </>
+      {/* Member Profile replaces previous dashboard view */}
+      <MemberProfile memberId={member.id} />
+    </div>
   );
 }

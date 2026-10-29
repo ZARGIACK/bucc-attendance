@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import useSWR, { useSWRConfig } from "swr";
-import { Bell, Check, Loader2 } from "lucide-react";
+import { Bell, Check, Loader2, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,10 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set());
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectedIds, setRejectedIds] = useState<Set<string>>(new Set());
+  const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
+  const [submittingRejectId, setSubmittingRejectId] = useState<string | null>(null);
   const { mutate: globalMutate } = useSWRConfig();
 
   const { data, mutate } = useSWR<{ notifications: NotificationRow[]; unread: number }>(
@@ -61,6 +65,37 @@ export function NotificationBell() {
       toast("error", err.message || "Failed to approve sign-out");
     } finally {
       setApprovingId(null);
+    }
+  }
+
+  async function rejectSignout(requestId: string) {
+    setSubmittingRejectId(requestId);
+    const reason = rejectReason[requestId]?.trim() || undefined;
+    try {
+      const res = await fetch(`/api/approvals/${requestId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "reject", reason }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (body.error === "This request has already been reviewed") {
+          toast("info", "This sign-out has already been reviewed.");
+          setRejectedIds((prev) => new Set(prev).add(requestId));
+        } else {
+          throw new Error(body.error ?? "Failed to reject");
+        }
+      } else {
+        toast("success", "Sign-out rejected ❌");
+        setRejectedIds((prev) => new Set(prev).add(requestId));
+      }
+      setRejectingId(null);
+      void mutate();
+      void globalMutate((key) => typeof key === "string" && (key.startsWith("/api/approvals") || key.startsWith("/api/dashboard")));
+    } catch (err: any) {
+      toast("error", err.message || "Failed to reject sign-out");
+    } finally {
+      setSubmittingRejectId(null);
     }
   }
 
@@ -120,6 +155,8 @@ export function NotificationBell() {
                   }
 
                   const isApproved = requestId ? approvedIds.has(requestId) : false;
+                  const isRejected = requestId ? rejectedIds.has(requestId) : false;
+                  const isPromptingReject = requestId ? rejectingId === requestId : false;
 
                   return (
                     <div
@@ -137,31 +174,86 @@ export function NotificationBell() {
                         </span>
 
                         {requestId && (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             {isApproved ? (
                               <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-500/20">
                                 <Check className="h-3 w-3" /> Approved
                               </span>
+                            ) : isRejected ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md border border-rose-500/20">
+                                <X className="h-3 w-3" /> Rejected
+                              </span>
                             ) : (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void approveSignout(requestId!);
-                                }}
-                                disabled={approvingId === requestId}
-                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 text-xs font-semibold shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
-                              >
-                                {approvingId === requestId ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <Check className="h-3 w-3" />
-                                )}
-                                Approve
-                              </button>
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void approveSignout(requestId!);
+                                  }}
+                                  disabled={approvingId === requestId || submittingRejectId === requestId}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 text-xs font-semibold shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                                >
+                                  {approvingId === requestId ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Check className="h-3 w-3" />
+                                  )}
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setRejectingId(isPromptingReject ? null : requestId);
+                                  }}
+                                  disabled={approvingId === requestId || submittingRejectId === requestId}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300 border border-rose-200 dark:border-rose-900 px-2 py-1 text-xs font-semibold shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                                >
+                                  <X className="h-3 w-3" />
+                                  Reject
+                                </button>
+                              </>
                             )}
                           </div>
                         )}
                       </div>
+
+                      {/* Inline Reject Form */}
+                      {requestId && isPromptingReject && !isApproved && !isRejected && (
+                        <div
+                          className="mt-2.5 flex flex-col gap-1.5 rounded-xl border border-rose-200 bg-rose-50/70 p-2.5 dark:border-rose-900/60 dark:bg-rose-950/30"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="text"
+                            placeholder="Rejection reason (optional)..."
+                            value={rejectReason[requestId] || ""}
+                            onChange={(e) =>
+                              setRejectReason((prev) => ({ ...prev, [requestId!]: e.target.value }))
+                            }
+                            className="h-8 w-full rounded-lg border border-slate-300 bg-white px-2.5 text-xs text-slate-800 placeholder:text-slate-400 focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500 dark:border-navy-700 dark:bg-navy-900 dark:text-slate-100"
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setRejectingId(null)}
+                              className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => void rejectSignout(requestId!)}
+                              disabled={submittingRejectId === requestId}
+                              className="inline-flex items-center gap-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white px-2.5 py-1 text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
+                            >
+                              {submittingRejectId === requestId ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <X className="h-3 w-3" />
+                              )}
+                              Confirm Reject
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

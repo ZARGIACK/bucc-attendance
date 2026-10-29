@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import { format, differenceInHours } from "date-fns";
-import { CalendarPlus, QrCode, RefreshCw, Megaphone, Users, Ticket, ExternalLink, Palette } from "lucide-react";
+import { CalendarPlus, QrCode, RefreshCw, Megaphone, Users, Ticket, ExternalLink, Palette, ScrollText } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +12,7 @@ import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 import { UpcomingSessionTracker } from "@/components/upcoming-session-tracker";
 import { ThemeManagerTab } from "@/components/theme-manager-tab";
+import { AuditLogTab } from "@/components/audit-log-tab";
 
 const TABS = [
   { id: "sessions", label: "Sessions & QR", icon: QrCode },
@@ -18,6 +20,7 @@ const TABS = [
   { id: "themes", label: "Pass Themes", icon: Palette },
   { id: "members", label: "Members", icon: Users },
   { id: "announcements", label: "Announcements", icon: Megaphone },
+  { id: "audit-logs", label: "Audit Log", icon: ScrollText },
 ] as const;
 
 const inputCls =
@@ -60,6 +63,7 @@ export function AdminPanel() {
       {tab === "themes" && <ThemeManagerTab />}
       {tab === "members" && <MembersTab />}
       {tab === "announcements" && <AnnouncementsTab />}
+      {tab === "audit-logs" && <AuditLogTab />}
     </div>
   );
 }
@@ -350,7 +354,12 @@ function MembersTab() {
             {(data?.members ?? []).map((m) => (
               <tr key={m.id} className="border-b border-slate-100 last:border-0 dark:border-navy-800/50">
                 <td className="px-4 py-2.5">
-                  <p className="font-medium">{m.name}</p>
+                  <Link
+                    href={`/dashboard/profile?id=${m.id}`}
+                    className="font-medium text-slate-900 hover:text-electric-600 dark:text-white dark:hover:text-electric-400 hover:underline"
+                  >
+                    {m.name}
+                  </Link>
                   <p className="text-xs text-slate-400">{m.email}</p>
                 </td>
                 <td className="px-4 py-2.5">{m.studentId}</td>
