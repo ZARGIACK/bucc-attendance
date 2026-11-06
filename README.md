@@ -198,5 +198,5 @@ What started as an ambitious, late-night vibe-coding sprint to eliminate long qu
 
 ## 👥 Authors & Acknowledgments
 
-- **Developed for:** [BRAC University Computer Club (BUCC)](https://bucc.club)
-- **Built & Maintained by:** BUCC System Development & Executive Teams.
+- **Developed for:** [BRAC University Computer Club (BUCC)](https://bracucc.org)
+- **Built & Maintained by:** Dibyo Singho Barua Subrajit
